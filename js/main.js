@@ -64,6 +64,7 @@ export default class Main {
     }
 
     if (db.screen === ScreenState.MENU) {
+      console.log('[Touch] MENU 触摸:', x, y);
       this.menu.onTouch(x, y);
       return;
     }

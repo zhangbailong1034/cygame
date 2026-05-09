@@ -6,7 +6,8 @@
       "Bash(npm install *)",
       "Bash(mysql -u root -p\"nono.MORE\" -e \"CREATE DATABASE IF NOT EXISTS cygame_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\")",
       "Bash(node seeds/seedLevels.js)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(git commit *)"
     ]
   }
 }
