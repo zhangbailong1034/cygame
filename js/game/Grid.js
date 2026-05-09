@@ -139,7 +139,6 @@ export class Grid {
         }
       })
       .catch(err => {
-        console.log('[Grid] 放置失败:', frag.text, '->', positions, 'err:', JSON.stringify(err));
         db.stamina = err.stamina !== undefined ? err.stamina : db.stamina;
         db.showToast(err.message || '位置不对');
         db.reset();

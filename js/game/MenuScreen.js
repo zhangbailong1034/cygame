@@ -49,10 +49,8 @@ export class MenuScreen {
 
   startLevel(levelId) {
     const db = GameGlobal.databus;
-    console.log('[Menu] 进入关卡:', levelId);
     db.levelId = levelId;
     api.getLevelData(levelId).then(data => {
-      console.log('[Menu] 关卡数据加载成功');
       db.rows = data.rows;
       db.cols = data.cols;
       db.gridState = data.gridState;
@@ -63,7 +61,7 @@ export class MenuScreen {
       db.reset();
       db.screen = ScreenState.PLAYING;
       this.editorTapCount = 0;
-    }).catch((e) => { console.error('[Menu] 加载关卡失败:', e); db.showToast('加载关卡失败'); });
+    }).catch(() => { db.showToast('加载关卡失败'); });
   }
 
   showRanking() {

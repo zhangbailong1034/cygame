@@ -1,21 +1,17 @@
-import { SCREEN_WIDTH } from '../render';
+import { SCREEN_WIDTH, SCREEN_HEIGHT } from '../render';
 import { Button } from './Button';
 import { api } from '../api/index';
 
 export class HUD {
   constructor() {
     this.yTop = 5;
-    this.yBottom = SCREEN_WIDTH * 1.2;
-    this.height = 40;
+    this.btnH = 32;
+    this.btnW = 70;
+    this.gap = 8;
 
-    const btnW = 70, btnH = 32;
-    const gap = 8;
-    const totalW = btnW * 3 + gap * 2;
-    const startX = (SCREEN_WIDTH - totalW) / 2;
-
-    this.hintBtn = new Button(startX, this.yBottom, btnW, btnH, '提示', '#e8a840');
-    this.shuffleBtn = new Button(startX + btnW + gap, this.yBottom, btnW, btnH, '洗牌', '#6c9bd2');
-    this.resetBtn = new Button(startX + (btnW + gap) * 2, this.yBottom, btnW, btnH, '重置', '#d94a4a');
+    this.hintBtn = new Button(0, 0, this.btnW, this.btnH, '提示', '#e8a840');
+    this.shuffleBtn = new Button(0, 0, this.btnW, this.btnH, '洗牌', '#6c9bd2');
+    this.resetBtn = new Button(0, 0, this.btnW, this.btnH, '重置', '#d94a4a');
 
     this.hintBtn.onClick = () => this.handleHint();
     this.shuffleBtn.onClick = () => this.handleShuffle();
@@ -24,7 +20,23 @@ export class HUD {
     this.allButtons = [this.hintBtn, this.shuffleBtn, this.resetBtn];
   }
 
+  getLayout() {
+    const totalW = this.btnW * 3 + this.gap * 2;
+    const startX = (SCREEN_WIDTH - totalW) / 2;
+    const btnY = SCREEN_HEIGHT - this.btnH - 10;
+
+    this.hintBtn.x = startX;
+    this.hintBtn.y = btnY;
+    this.shuffleBtn.x = startX + this.btnW + this.gap;
+    this.shuffleBtn.y = btnY;
+    this.resetBtn.x = startX + (this.btnW + this.gap) * 2;
+    this.resetBtn.y = btnY;
+
+    this.yBottom = btnY;
+  }
+
   draw(ctx) {
+    this.getLayout();
     const db = GameGlobal.databus;
 
     ctx.fillStyle = '#fff';
@@ -49,21 +61,22 @@ export class HUD {
     ctx.fillStyle = '#e8a840';
     ctx.fillText('⭐ ' + db.totalScore, SCREEN_WIDTH - 12, 26);
 
-    const gap = 6;
+    const barTop = this.yBottom - 6;
     ctx.fillStyle = '#fff';
-    ctx.fillRect(0, this.yBottom - gap, SCREEN_WIDTH, 50);
+    ctx.fillRect(0, barTop, SCREEN_WIDTH, SCREEN_HEIGHT - barTop);
     ctx.strokeStyle = '#e0e0e0';
     ctx.beginPath();
-    ctx.moveTo(0, this.yBottom - gap);
-    ctx.lineTo(SCREEN_WIDTH, this.yBottom - gap);
+    ctx.moveTo(0, barTop);
+    ctx.lineTo(SCREEN_WIDTH, barTop);
     ctx.stroke();
 
-    this.hintBtn.draw(ctx);
-    this.shuffleBtn.draw(ctx);
-    this.resetBtn.draw(ctx);
+    for (const btn of this.allButtons) {
+      btn.draw(ctx);
+    }
   }
 
   hitTest(px, py) {
+    this.getLayout();
     for (const b of this.allButtons) {
       if (b.hitTest(px, py)) return true;
     }
@@ -71,6 +84,7 @@ export class HUD {
   }
 
   onTouch(x, y) {
+    this.getLayout();
     for (const b of this.allButtons) {
       if (b.hitTest(x, y) && b.onClick) { b.onClick(); return; }
     }

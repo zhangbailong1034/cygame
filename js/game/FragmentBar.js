@@ -3,51 +3,64 @@ import { PlaceState } from '../databus';
 
 export class FragmentBar {
   constructor() {
-    this.y = 0;
     this.itemW = 56;
     this.itemH = 40;
     this.gap = 8;
     this.paddingX = 12;
+    this.rowGap = 8;
+    this.startY = 0;
+    this._items = [];
   }
 
   getLayout() {
-    const gridBottom = 70 + 6 * (52 + 4);
-    this.y = Math.max(gridBottom + 10, SCREEN_WIDTH * 0.95);
+    const db = GameGlobal.databus;
+    const allItems = [
+      ...db.fragments.map(f => ({ ...f, isDistractor: false })),
+      ...db.distractors.map(d => ({ text: d.text, length: d.length, positions: null, isDistractor: true })),
+    ];
+
+    const gridBottom = 70 + db.rows * (52 + 4);
+    this.startY = Math.max(gridBottom + 10, SCREEN_WIDTH * 0.92);
+    const maxW = SCREEN_WIDTH - this.paddingX * 2;
+
+    this._items = [];
+    let row = 0;
+    let cx = this.paddingX;
+
+    for (const frag of allItems) {
+      const w = frag.length === 2 ? this.itemW * 2 + this.gap : this.itemW;
+      if (cx + w > maxW && cx > this.paddingX) {
+        row++;
+        cx = this.paddingX;
+      }
+      this._items.push({
+        ...frag,
+        x: cx,
+        y: this.startY + row * (this.itemH + this.rowGap),
+        w,
+        h: this.itemH,
+      });
+      cx += w + this.gap;
+    }
+
+    this.totalHeight = (row + 1) * (this.itemH + this.rowGap);
+    return this._items;
   }
 
   hitTest(px, py) {
     this.getLayout();
-    const db = GameGlobal.databus;
-    const allItems = [
-      ...db.fragments,
-      ...db.distractors.map(d => ({ text: d.text, length: d.length, positions: null })),
-    ];
-    let cx = this.paddingX;
-    for (const frag of allItems) {
-      const w = frag.length === 2 ? this.itemW * 2 + this.gap : this.itemW;
-      if (px >= cx && px <= cx + w && py >= this.y && py <= this.y + this.itemH) {
-        return true;
-      }
-      cx += w + this.gap;
-    }
-    return false;
+    return this._items.some(item =>
+      px >= item.x && px <= item.x + item.w &&
+      py >= item.y && py <= item.y + item.h
+    );
   }
 
   getFragmentAt(px, py) {
-    const db = GameGlobal.databus;
-    const allItems = [
-      ...db.fragments,
-      ...db.distractors.map(d => ({ text: d.text, length: d.length, positions: null })),
-    ];
-    let cx = this.paddingX;
-    for (const frag of allItems) {
-      const w = frag.length === 2 ? this.itemW * 2 + this.gap : this.itemW;
-      if (px >= cx && px <= cx + w && py >= this.y && py <= this.y + this.itemH) {
-        return frag;
-      }
-      cx += w + this.gap;
-    }
-    return null;
+    this.getLayout();
+    return this._items.find(item =>
+      px >= item.x && px <= item.x + item.w &&
+      py >= item.y && py <= item.y + item.h
+    );
   }
 
   onTouch(x, y) {
@@ -73,23 +86,14 @@ export class FragmentBar {
   }
 
   draw(ctx) {
-    this.getLayout();
+    const items = this.getLayout();
     const db = GameGlobal.databus;
-    const allItems = [
-      ...db.fragments.map(f => ({ ...f, isDistractor: false, used: false })),
-      ...db.distractors.map(d => ({ text: d.text, length: d.length, positions: null, isDistractor: true, used: false })),
-    ];
 
-    let cx = this.paddingX;
+    for (const item of items) {
+      const { x, y, w, h, text, isDistractor } = item;
+      const isSelected = db.selectedFragment && db.selectedFragment.text === text;
 
-    for (const frag of allItems) {
-      const w = frag.length === 2 ? this.itemW * 2 + this.gap : this.itemW;
-
-      if (cx + w > SCREEN_WIDTH - this.paddingX) break;
-
-      const isSelected = db.selectedFragment && db.selectedFragment.text === frag.text;
-
-      if (frag.isDistractor) {
+      if (isDistractor) {
         ctx.fillStyle = '#f0e6d0';
       } else if (isSelected) {
         ctx.fillStyle = '#ffcc80';
@@ -101,15 +105,15 @@ export class FragmentBar {
       ctx.lineWidth = isSelected ? 2 : 1;
       ctx.beginPath();
       const r = 6;
-      ctx.moveTo(cx + r, this.y);
-      ctx.lineTo(cx + w - r, this.y);
-      ctx.quadraticCurveTo(cx + w, this.y, cx + w, this.y + r);
-      ctx.lineTo(cx + w, this.y + this.itemH - r);
-      ctx.quadraticCurveTo(cx + w, this.y + this.itemH, cx + w - r, this.y + this.itemH);
-      ctx.lineTo(cx + r, this.y + this.itemH);
-      ctx.quadraticCurveTo(cx, this.y + this.itemH, cx, this.y + this.itemH - r);
-      ctx.lineTo(cx, this.y + r);
-      ctx.quadraticCurveTo(cx, this.y, cx + r, this.y);
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
@@ -118,9 +122,7 @@ export class FragmentBar {
       ctx.font = 'bold 16px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(frag.text, cx + w / 2, this.y + this.itemH / 2);
-
-      cx += w + this.gap;
+      ctx.fillText(text, x + w / 2, y + h / 2);
     }
   }
 }
