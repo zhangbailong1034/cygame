@@ -1,7 +1,7 @@
 const { LevelConfig, HintLog } = require('../models');
 const { buildAnswerMap } = require('./levelService');
 
-async function getHint(levelId, row, col, hintType, openId) {
+async function getHint(levelId, row, col, hintType, userId) {
   const config = await LevelConfig.findOne({ where: { level_id: levelId } });
   if (!config) throw Object.assign(new Error('关卡不存在'), { status: 404 });
 
@@ -17,7 +17,7 @@ async function getHint(levelId, row, col, hintType, openId) {
   }
 
   await HintLog.create({
-    user_id: openId,
+    user_id: userId,
     level_id: levelId,
     row, col,
     hint_type: hintType,

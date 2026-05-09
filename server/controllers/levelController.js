@@ -14,7 +14,7 @@ async function getLevelData(req, res, next) {
     const user = await userService.recoverStamina(
       await userService.getUser(req.openId)
     );
-    const data = await levelService.getLevelData(levelId, user.open_id);
+    const data = await levelService.getLevelData(levelId, user.id);
     res.json({ ...data, stamina: user.stamina, totalScore: user.total_score });
   } catch (err) { next(err); }
 }

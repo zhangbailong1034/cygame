@@ -1,11 +1,11 @@
 const { LevelConfig, UserProgress, User } = require('../models');
 
-async function placeFragment(levelId, fragmentText, positions, openId) {
+async function placeFragment(levelId, fragmentText, positions, userId) {
   const config = await LevelConfig.findOne({ where: { level_id: levelId } });
   if (!config) throw Object.assign(new Error('关卡不存在'), { status: 404, code: 'level_not_found' });
 
   const progress = await UserProgress.findOne({
-    where: { user_id: openId, level_id: levelId },
+    where: { user_id: userId, level_id: levelId },
   });
 
   if (progress.used_fragments.includes(fragmentText)) {
@@ -50,7 +50,7 @@ async function placeFragment(levelId, fragmentText, positions, openId) {
   }
   await progress.save();
 
-  const user = await User.findOne({ where: { open_id: openId } });
+  const user = await User.findByPk(userId);
   user.total_score += 5;
   if (isComplete) {
     user.total_score += config.min_score;
@@ -70,7 +70,7 @@ async function placeFragment(levelId, fragmentText, positions, openId) {
   };
 }
 
-async function resetLevel(levelId, openId) {
+async function resetLevel(levelId, userId) {
   const config = await LevelConfig.findOne({ where: { level_id: levelId } });
   if (!config) throw Object.assign(new Error('关卡不存在'), { status: 404 });
 
@@ -82,16 +82,16 @@ async function resetLevel(levelId, openId) {
     gridState[cell.row][cell.col] = cell.char;
   }
 
-  await UserProgress.destroy({ where: { user_id: openId, level_id: levelId } });
+  await UserProgress.destroy({ where: { user_id: userId, level_id: levelId } });
 
   await UserProgress.create({
-    user_id: openId,
+    user_id: userId,
     level_id: levelId,
     grid_state: gridState,
     used_fragments: [],
   });
 
-  const user = await User.findOne({ where: { open_id: openId } });
+  const user = await User.findByPk(userId);
   user.stamina = Math.max(0, user.stamina - 1);
   await user.save();
 

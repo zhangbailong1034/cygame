@@ -1,6 +1,6 @@
 const { Sequelize } = require('sequelize');
 
-const sequelize = new Sequelize('pygame_dev', 'root', '', {
+const sequelize = new Sequelize('cygame_dev', 'root', 'nono.MORE', {
   host: 'localhost',
   dialect: 'mysql',
   logging: false,
