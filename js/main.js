@@ -22,10 +22,12 @@ export default class Main {
     this.toast = new Toast();
     this.staminaTimer = 0;
 
+    console.log('[Main] 游戏启动中... canvas:', canvas.width, 'x', canvas.height);
     this.initTouchHandler();
     this.loop = this.loop.bind(this);
     GameGlobal.main = this;
     this.init();
+    this.aniId = requestAnimationFrame(this.loop);
   }
 
   async init() {
@@ -108,6 +110,8 @@ export default class Main {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (db.screen === ScreenState.MENU) {
+      if (!this._renderCount) { this._renderCount = 0; }
+      if (this._renderCount++ === 0) console.log('[Render] 首帧渲染, screen:', db.screen);
       this.menu.draw(ctx);
     } else if (db.screen === ScreenState.EDITOR) {
       this.editor.draw(ctx);
