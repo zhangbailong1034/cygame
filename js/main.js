@@ -50,7 +50,7 @@ export default class Main {
   initTouchHandler() {
     wx.onTouchStart((e) => {
       const touch = e.touches[0];
-      this.handleTouch(touch.x, touch.y);
+      this.handleTouch(touch.clientX, touch.clientY);
     });
   }
 
