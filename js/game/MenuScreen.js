@@ -12,13 +12,28 @@ export class MenuScreen {
     this.page = 0;
     this.perPage = 18;
     this.pageBtnH = 36;
+    this.muteBtn = new Button(SCREEN_WIDTH - 46, 8, 38, 28, '🔊', 'rgba(0,0,0,0.15)');
+    this.muteBtn.onClick = () => {
+      GameGlobal.main.soundManager.toggleMute();
+      this.muteBtn.label = GameGlobal.main.soundManager.muted ? '🔇' : '🔊';
+    };
   }
 
   async loadLevels() {
     try {
-      const data = await api.getLevels();
-      GameGlobal.databus.levels = data.levels;
+      const [levelData, userData] = await Promise.all([api.getLevels(), api.getMe()]);
+      const db = GameGlobal.databus;
+      db.levels = levelData.levels;
+      db.stamina = userData.user.stamina;
+      db.totalScore = userData.user.total_score;
+      db.currentLevel = userData.user.current_level;
+      db.todaySigned = userData.user.todaySigned;
+      db.signStreak = userData.user.signStreak;
       this.buildButtons();
+      GameGlobal.main.adManager.showBanner();
+      if (!db.todaySigned) {
+        GameGlobal.main.dailySign.show(db.signStreak, false);
+      }
     } catch (e) {
       GameGlobal.databus.showToast('加载关卡失败');
     }
@@ -78,6 +93,12 @@ export class MenuScreen {
 
     this.studyBtn = new Button(SCREEN_WIDTH / 2 + 6, bottomY, 100, 40, '学习记录', '#6c9bd2');
     this.studyBtn.onClick = () => this.showStudyRecords();
+
+    const adY = bottomY + 52;
+    this.staminaAdBtn = new Button(SCREEN_WIDTH / 2 - 106, adY, 212, 36, '看广告 +3体力', '#ff9800');
+    this.staminaAdBtn.onClick = () => {
+      GameGlobal.main.adManager.showRewarded('stamina');
+    };
   }
 
   startLevel(levelId, preview = false) {
@@ -138,6 +159,8 @@ export class MenuScreen {
     if (this.nextBtn && this.nextBtn.hitTest(x, y)) { this.nextBtn.onClick(); return; }
     if (this.rankBtn && this.rankBtn.hitTest(x, y)) { this.rankBtn.onClick(); return; }
     if (this.studyBtn && this.studyBtn.hitTest(x, y)) { this.studyBtn.onClick(); return; }
+    if (this.staminaAdBtn && this.staminaAdBtn.hitTest(x, y)) { this.staminaAdBtn.onClick(); return; }
+    if (this.muteBtn && this.muteBtn.hitTest(x, y)) { this.muteBtn.onClick(); return; }
   }
 
   draw(ctx) {
@@ -157,5 +180,7 @@ export class MenuScreen {
 
     if (this.rankBtn) this.rankBtn.draw(ctx);
     if (this.studyBtn) this.studyBtn.draw(ctx);
+    if (this.staminaAdBtn) this.staminaAdBtn.draw(ctx);
+    if (this.muteBtn) this.muteBtn.draw(ctx);
   }
 }
