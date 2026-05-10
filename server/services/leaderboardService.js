@@ -15,6 +15,7 @@ async function getRankings() {
       avatarUrl: u.avatar_url,
       level: u.current_level,
       totalScore: u.total_score,
+      openId: u.open_id,
     }));
     board = await Leaderboard.create({ date: today, rankings });
   }

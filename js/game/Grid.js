@@ -4,8 +4,8 @@ import { api } from '../api/index';
 
 export class Grid {
   constructor() {
-    this.cellSize = 52;
-    this.gap = 4;
+    this.cellSize = 54;
+    this.gap = 5;
     this.offsetX = 0;
     this.offsetY = 0;
     this.highlightCell = null;
@@ -13,10 +13,15 @@ export class Grid {
 
   getLayout() {
     const db = GameGlobal.databus;
+    const panelPad = 16;
+    const maxGridW = SCREEN_WIDTH - panelPad * 2;
+    // Shrink cell size if grid is too wide
+    const idealCellW = (maxGridW - (db.cols - 1) * this.gap) / db.cols;
+    this.cellSize = Math.min(54, Math.floor(idealCellW));
     const totalW = db.cols * this.cellSize + (db.cols - 1) * this.gap;
     const totalH = db.rows * this.cellSize + (db.rows - 1) * this.gap;
     this.offsetX = (SCREEN_WIDTH - totalW) / 2;
-    this.offsetY = 70;
+    this.offsetY = 138;
     return { totalW, totalH, offsetX: this.offsetX, offsetY: this.offsetY };
   }
 
@@ -54,20 +59,19 @@ export class Grid {
 
   onTouch(x, y) {
     const db = GameGlobal.databus;
+    if (db.previewMode) { db.showToast('预览模式，无法操作'); return; }
     const cell = this.getCellAt(x, y);
     if (!cell) return;
 
     const char = db.gridState[cell.row] && db.gridState[cell.row][cell.col];
     if (char) return;
 
-    // 未选中碎片：记录格子用于提示
     if (!db.selectedFragment && db.placeState === PlaceState.IDLE) {
       db.firstCell = cell;
       this.highlightCell = cell;
       return;
     }
 
-    // 已选中碎片：尝试放置
     if (db.selectedFragment) {
       const frag = db.selectedFragment;
 
@@ -103,26 +107,32 @@ export class Grid {
     api.placeFragment(db.levelId, frag.text, positions.map(p => [p.row, p.col]))
       .then(res => {
         db.gridState = res.gridState;
-        db.fragments = res.fragments || db.fragments.filter(f => f.text !== frag.text);
-        if (!db.usedFragments.includes(frag.text)) {
-          db.usedFragments.push(frag.text);
+        db.fragments = res.fragments
+          ? res.fragments.map((f, i) => ({
+              ...f,
+              uid: f.uid || (f.text + '_' + (f.positions ? JSON.stringify(f.positions) : i)),
+            }))
+          : db.fragments.filter(f => f.uid !== frag.uid);
+        if (!db.usedFragments.includes(frag.uid)) {
+          db.usedFragments.push(frag.uid);
         }
         db.stamina = res.stamina;
         db.totalScore = res.totalScore;
         db.reset();
         this.highlightCell = null;
         if (res.isComplete) {
-          GameGlobal.main.dialog.show(
+          db.currentLevel = Math.max(db.currentLevel, db.levelId + 1);
+          GameGlobal.main.dialog.showIdioms(
             '恭喜通关！',
-            '获得 ' + res.scoreDelta + ' 积分，体力 +2',
+            res.idioms || [],
+            res.scoreDelta,
             [
               {
                 label: '下一关',
                 color: '#4a90d9',
                 onClick: () => {
                   GameGlobal.main.dialog.hide();
-                  const nextLevel = db.levelId + 1;
-                  GameGlobal.main.menu.startLevel(nextLevel);
+                  GameGlobal.main.menu.startLevel(db.levelId + 1);
                 }
               },
               {
@@ -150,59 +160,86 @@ export class Grid {
     const db = GameGlobal.databus;
     this.getLayout();
 
+    // Grid panel background
+    const panelPad = 16;
+    const panelX = this.offsetX - panelPad;
+    const panelY = this.offsetY - panelPad;
+    const panelW = db.cols * this.cellSize + (db.cols - 1) * this.gap + panelPad * 2;
+    const panelH = db.rows * this.cellSize + (db.rows - 1) * this.gap + panelPad * 2;
+
+    // Panel shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    this._roundRect(ctx, panelX + 2, panelY + 3, panelW, panelH, 12);
+    ctx.fill();
+
+    // Panel background
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    this._roundRect(ctx, panelX, panelY, panelW, panelH, 12);
+    ctx.fill();
+
     for (let r = 0; r < db.rows; r++) {
       for (let c = 0; c < db.cols; c++) {
         const cx = this.offsetX + c * (this.cellSize + this.gap);
         const cy = this.offsetY + r * (this.cellSize + this.gap);
         const char = db.gridState[r] && db.gridState[r][c];
+        const isHighlighted = this.highlightCell && this.highlightCell.row === r && this.highlightCell.col === c;
 
+        // Cell shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.06)';
+        this._roundRect(ctx, cx + 1, cy + 2, this.cellSize, this.cellSize, 8);
+        ctx.fill();
+
+        // Cell background
         if (char) {
-          ctx.fillStyle = '#d4e8d4';
+          const grad = ctx.createLinearGradient(cx, cy, cx, cy + this.cellSize);
+          grad.addColorStop(0, '#c8e6c9');
+          grad.addColorStop(1, '#a5d6a7');
+          ctx.fillStyle = grad;
+        } else if (isHighlighted) {
+          ctx.fillStyle = '#fff3e0';
         } else {
           ctx.fillStyle = '#ffffff';
         }
-        ctx.strokeStyle = '#b0b0b0';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        const cr = 6;
-        ctx.moveTo(cx + cr, cy);
-        ctx.lineTo(cx + this.cellSize - cr, cy);
-        ctx.quadraticCurveTo(cx + this.cellSize, cy, cx + this.cellSize, cy + cr);
-        ctx.lineTo(cx + this.cellSize, cy + this.cellSize - cr);
-        ctx.quadraticCurveTo(cx + this.cellSize, cy + this.cellSize, cx + this.cellSize - cr, cy + this.cellSize);
-        ctx.lineTo(cx + cr, cy + this.cellSize);
-        ctx.quadraticCurveTo(cx, cy + this.cellSize, cx, cy + this.cellSize - cr);
-        ctx.lineTo(cx, cy + cr);
-        ctx.quadraticCurveTo(cx, cy, cx + cr, cy);
-        ctx.closePath();
+        this._roundRect(ctx, cx, cy, this.cellSize, this.cellSize, 8);
         ctx.fill();
+
+        // Cell border
+        ctx.strokeStyle = isHighlighted ? '#ff9800' : '#d0d0d0';
+        ctx.lineWidth = isHighlighted ? 2.5 : 1;
+        this._roundRect(ctx, cx, cy, this.cellSize, this.cellSize, 8);
         ctx.stroke();
 
-        if (this.highlightCell && this.highlightCell.row === r && this.highlightCell.col === c) {
-          ctx.strokeStyle = '#ff6600';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(cx + cr, cy);
-          ctx.lineTo(cx + this.cellSize - cr, cy);
-          ctx.quadraticCurveTo(cx + this.cellSize, cy, cx + this.cellSize, cy + cr);
-          ctx.lineTo(cx + this.cellSize, cy + this.cellSize - cr);
-          ctx.quadraticCurveTo(cx + this.cellSize, cy + this.cellSize, cx + this.cellSize - cr, cy + this.cellSize);
-          ctx.lineTo(cx + cr, cy + this.cellSize);
-          ctx.quadraticCurveTo(cx, cy + this.cellSize, cx, cy + this.cellSize - cr);
-          ctx.lineTo(cx, cy + cr);
-          ctx.quadraticCurveTo(cx, cy, cx + cr, cy);
-          ctx.closePath();
+        // Highlight glow
+        if (isHighlighted) {
+          ctx.strokeStyle = 'rgba(255,152,0,0.25)';
+          ctx.lineWidth = 6;
+          this._roundRect(ctx, cx - 3, cy - 3, this.cellSize + 6, this.cellSize + 6, 11);
           ctx.stroke();
         }
 
+        // Character text
         if (char) {
-          ctx.fillStyle = '#333';
-          ctx.font = 'bold 22px sans-serif';
+          ctx.fillStyle = '#2e7d32';
+          ctx.font = 'bold 24px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(char, cx + this.cellSize / 2, cy + this.cellSize / 2);
+          ctx.fillText(char, cx + this.cellSize / 2, cy + this.cellSize / 2 + 1);
         }
       }
     }
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
   }
 }

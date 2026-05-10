@@ -1,30 +1,50 @@
 const { LevelConfig, UserProgress, User } = require('../models');
 
+function fragmentKey(f) {
+  return f.text + '_' + JSON.stringify(f.positions);
+}
+
 async function placeFragment(levelId, fragmentText, positions, userId) {
   const config = await LevelConfig.findOne({ where: { level_id: levelId } });
   if (!config) throw Object.assign(new Error('关卡不存在'), { status: 404, code: 'level_not_found' });
 
-  const progress = await UserProgress.findOne({
+  let progress = await UserProgress.findOne({
     where: { user_id: userId, level_id: levelId },
   });
-
-  if (progress.used_fragments.includes(fragmentText)) {
-    throw Object.assign(new Error('碎片已使用'), { status: 400, code: 'already_used' });
-  }
-
-  const fragmentDef = config.fragments.find(f => f.text === fragmentText);
-  if (!fragmentDef) {
-    throw Object.assign(new Error('碎片不存在'), { status: 400, code: 'fragment_not_found' });
-  }
-
-  const expectedPositions = fragmentDef.positions;
-  if (positions.length !== expectedPositions.length) {
-    throw Object.assign(new Error('位置不对'), { status: 400, code: 'position_mismatch' });
-  }
-  for (let i = 0; i < positions.length; i++) {
-    if (positions[i][0] !== expectedPositions[i][0] || positions[i][1] !== expectedPositions[i][1]) {
-      throw Object.assign(new Error('位置不对'), { status: 400, code: 'position_mismatch' });
+  if (!progress) {
+    const gridState = [];
+    const { calculateEffectiveDimensions } = require('./levelService');
+    const dims = calculateEffectiveDimensions(config);
+    for (let r = 0; r < dims.rows; r++) {
+      gridState[r] = new Array(dims.cols).fill(null);
     }
+    for (const cell of config.fixed_cells) {
+      gridState[cell.row][cell.col] = cell.char;
+    }
+    progress = await UserProgress.create({
+      user_id: userId,
+      level_id: levelId,
+      grid_state: gridState,
+      used_fragments: [],
+    });
+  }
+
+  const used = progress.used_fragments || [];
+
+  const fragmentDef = config.fragments.find(f => {
+    if (f.text !== fragmentText) return false;
+    if (used.includes(fragmentKey(f))) return false;
+    const expected = f.positions;
+    if (positions.length !== expected.length) return false;
+    return positions.every((p, i) => p[0] === expected[i][0] && p[1] === expected[i][1]);
+  });
+
+  if (!fragmentDef) {
+    const anyWithText = config.fragments.find(f => f.text === fragmentText);
+    if (!anyWithText) {
+      throw Object.assign(new Error('碎片不存在'), { status: 400, code: 'fragment_not_found' });
+    }
+    throw Object.assign(new Error('位置不对'), { status: 400, code: 'position_mismatch' });
   }
 
   const gridState = progress.grid_state;
@@ -34,15 +54,16 @@ async function placeFragment(levelId, fragmentText, positions, userId) {
     gridState[r][c] = chars[i];
   }
 
-  const usedFragments = [...progress.used_fragments, fragmentText];
+  const usedKey = fragmentKey(fragmentDef);
+  const usedFragments = [...used, usedKey];
 
   progress.grid_state = gridState;
   progress.used_fragments = usedFragments;
   progress.changed('grid_state', true);
   progress.changed('used_fragments', true);
 
-  const allFragmentTexts = config.fragments.map(f => f.text);
-  const isComplete = allFragmentTexts.every(t => usedFragments.includes(t));
+  const allKeys = config.fragments.map(f => fragmentKey(f));
+  const isComplete = allKeys.every(k => usedFragments.includes(k));
 
   if (isComplete) {
     progress.completed = true;
@@ -59,24 +80,32 @@ async function placeFragment(levelId, fragmentText, positions, userId) {
   }
   await user.save();
 
-  return {
+  const result = {
     success: true,
     gridState,
-    remainingFragments: config.fragments.filter(f => !usedFragments.includes(f.text)),
+    fragments: config.fragments.filter(f => !usedFragments.includes(fragmentKey(f))),
     stamina: user.stamina,
     scoreDelta: isComplete ? 5 + config.min_score : 5,
     totalScore: user.total_score,
     isComplete,
   };
+
+  if (isComplete) {
+    result.idioms = config.idioms.map(i => ({ answer: i.answer, meaning: i.meaning || '' }));
+  }
+
+  return result;
 }
 
 async function resetLevel(levelId, userId) {
   const config = await LevelConfig.findOne({ where: { level_id: levelId } });
   if (!config) throw Object.assign(new Error('关卡不存在'), { status: 404 });
 
+  const { calculateEffectiveDimensions } = require('./levelService');
+  const dims = calculateEffectiveDimensions(config);
   const gridState = [];
-  for (let r = 0; r < config.rows; r++) {
-    gridState[r] = new Array(config.cols).fill(null);
+  for (let r = 0; r < dims.rows; r++) {
+    gridState[r] = new Array(dims.cols).fill(null);
   }
   for (const cell of config.fixed_cells) {
     gridState[cell.row][cell.col] = cell.char;

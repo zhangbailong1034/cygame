@@ -38,6 +38,9 @@ export default class DataBus {
   toastTimer = 0;
 
   isEditor = false;
+  previewMode = false;
+
+  savedIdioms = []; // { answer, meaning }
 
   constructor() {
     if (instance) return instance;

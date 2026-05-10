@@ -1,249 +1,248 @@
-# 技术文档：成语碎片拼合游戏（微信小程序）
+# 技术文档：成语碎片拼合游戏（微信小游戏）
 
 | 版本 | 日期 | 作者 | 变更内容 |
 |------|------|------|----------|
 | V1.0 | 2026-05-09 | 技术团队 | 初版 |
+| V1.1 | 2026-05-10 | 技术团队 | 更新至实际架构：Express+MySQL+Canvas |
 
-## 1. 技术选型与推荐理由
+## 1. 技术选型
 
-| 模块 | 技术栈 | 推荐理由 |
-|------|--------|----------|
-| 前端 | 微信小程序原生框架 (WXML + WXSS + TypeScript) | 性能最优，支持拖拽、动画等复杂交互；云开发集成度高 |
-| 后端 | 微信云开发 (CloudBase) | 无需自建服务器；自动伸缩；提供数据库、云函数、云存储、调用微信开放能力 |
-| 数据库 | 云开发 JSON 数据库 | 与前端 API 无缝对接；实时推送能力 (watch) 可用于排行榜 |
-| 云函数 | Node.js 12 / 16 | 实现成语校验、关卡解锁、积分计算等逻辑，保证安全性 |
-| 存储 | 云存储 | 存放关卡配置 JSON、用户头像等 |
-| 监控 | 微信小程序后台 + 云开发日志 | 实时查看错误、性能、访问统计 |
+| 模块 | 技术栈 | 理由 |
+|------|--------|------|
+| 前端 | 微信小游戏原生框架 (Canvas 2D + JavaScript) | 纯 Canvas 渲染，无 WXML/WXSS；灵活控制像素级 UI |
+| 后端 | Node.js + Express 5.x | RESTful API，本地开发直连 MySQL，部署灵活 |
+| 数据库 | MySQL + Sequelize ORM | 关系型数据适合关卡配置、用户进度等结构化数据 |
+| 认证 | JWT (openId) | 微信 openId 作为用户标识，token 放入 Authorization header |
+| 关卡生成 | Node.js 脚本 | 服务端脚本离线生成关卡 JSON，通过 seeding 导入数据库 |
 
-> 备选：如需自建后端，可用 Node.js + Express + MongoDB + Redis（会话/缓存），但云开发更轻量。
+## 2. 系统架构
 
-## 2. 系统架构图
-
-```mermaid
-graph TD
-    A[微信小程序端] --> B[云开发 API]
-    B --> C[云函数]
-    B --> D[数据库]
-    B --> E[云存储]
-    C --> D
-    C --> F[微信开放接口（登录/支付/广告）]
+```
+微信小游戏客户端 (Canvas 2D)
+        |
+        | HTTP (wx.request)
+        v
+Express API 服务器 (localhost:3000)
+        |
+        | Sequelize ORM
+        v
+MySQL 数据库 (cygame_dev)
 ```
 
-- **小程序端**：负责界面渲染、用户交互、本地缓存（关卡进度）。
-- **云函数**：处理核心逻辑：关卡数据读取、碎片放置校验、体力/积分变更、通关检测、提示扣费等。
-- **数据库**：存储用户信息、关卡元数据、用户进度、排行榜等。
-- **云存储**：存储关卡 JSON 配置文件（便于热更新）。
+- **客户端**：纯 Canvas 渲染，所有 UI（按钮、网格、碎片、弹窗）均用 Canvas 2D API 绘制。
+- **服务端**：Express 路由处理所有游戏逻辑（关卡数据、碎片校验、体力/积分、排行榜）。
+- **数据库**：MySQL 存储用户、关卡配置、进度、排行榜数据。
 
-## 3. 数据库集合设计
+## 3. 数据库表设计
 
-### 3.1 `users` 集合
+### 3.1 `users` 表
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| _id | string | 微信 openId |
-| nickName | string | 用户昵称（从微信获取） |
-| avatarUrl | string | 用户头像 |
-| level | number | 当前已解锁最高关卡（默认1） |
-| totalScore | number | 总积分 |
-| stamina | number | 当前体力值（上限10） |
-| lastStaminaRecover | Date | 上次体力恢复时间戳 |
-| createdAt | Date | 注册时间 |
-| updatedAt | Date | 更新时间 |
+| id | INT PK | 自增主键 |
+| openId | VARCHAR(255) UNIQUE | 微信 openId |
+| nickName | VARCHAR(255) | 用户昵称 |
+| avatarUrl | VARCHAR(500) | 用户头像 |
+| level | INT | 已解锁最高关卡（默认1） |
+| totalScore | INT | 总积分 |
+| stamina | INT | 当前体力值（上限10） |
+| lastStaminaRecover | DATE | 上次体力恢复时间 |
 
-### 3.2 `level_config` 集合（关卡静态配置）
+### 3.2 `level_configs` 表（关卡静态配置）
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| _id | number | 关卡号（1~N） |
-| rows | number | 网格行数 |
-| cols | number | 网格列数 |
-| fixedCells | array | `[{row,col,char}]` |
-| idioms | array | `[{direction, row/col, startCol/startRow, endCol/endRow, answer}]` |
-| fragments | array | `[{text, length, positions:[[row,col],...]}]` |
-| distractors | array | 干扰碎片 `[{text, length}]` |
-| minScore | number | 通关奖励基础积分 |
-| difficulty | string | easy/medium/hard |
+| level_id | INT PK | 关卡号（1~200） |
+| rows | INT | 网格行数 |
+| cols | INT | 网格列数 |
+| fixedCells | JSON | `[{row,col,char}]` |
+| idioms | JSON | `[{direction, row/col, startCol/startRow, endCol/endRow, answer}]` |
+| fragments | JSON | `[{text, length, positions:[[row,col],...]}]` |
+| distractors | JSON | 干扰碎片 `[{text, length}]` |
+| min_score | INT | 通关奖励基础积分 |
+| difficulty | VARCHAR(20) | easy/medium/hard |
 
-### 3.3 `user_progress` 集合（记录每个关卡的用户填字状态）
+### 3.3 `user_progress` 表（用户关卡进度）
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| _id | string | 自动生成 |
-| openId | string | 用户标识 |
-| levelId | number | 关卡号 |
-| gridState | array | 二维数组，存储每个格子的当前字符（固定+用户填入）或null |
-| usedFragments | array | 已使用的碎片文本列表 |
-| completed | bool | 是否已通关 |
-| completedAt | Date | 通关时间 |
-| lastUpdated | Date | 最后更新时间 |
+| id | INT PK | 自增主键 |
+| openId | VARCHAR(255) | 用户标识 |
+| levelId | INT | 关卡号 |
+| gridState | JSON | 二维数组，存储每个格子的当前字符或 null |
+| usedFragments | JSON | 已使用的碎片 uid 列表 |
+| completed | BOOL | 是否已通关 |
 
-### 3.4 `leaderboard` 集合（排行榜快照，每日更新）
+### 3.4 `leaderboard` 表（排行榜）
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| _id | string | `date_rank` |
-| rankings | array | `[{openId, nickName, avatarUrl, level, totalScore}]` |
-| date | string | YYYY-MM-DD |
+| id | INT PK | 自增主键 |
+| openId | VARCHAR(255) | 用户标识 |
+| nickName | VARCHAR(255) | 昵称 |
+| avatarUrl | VARCHAR(500) | 头像 |
+| level | INT | 最高通关关卡 |
+| totalScore | INT | 总积分 |
 
-> 注：为避免频繁聚合查询，采用每日凌晨云函数计算总分前100名写入此集合。
+### 3.5 `saved_idioms` 表（用户收藏成语）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INT PK | 自增主键 |
+| openId | VARCHAR(255) | 用户标识 |
+| answer | VARCHAR(50) | 成语文本 |
+| meaning | TEXT | 成语释义 |
 
-## 4. 云函数接口设计
+## 4. API 接口设计
 
-所有云函数均通过 `callFunction` 调用，需校验 `openId`。
+所有接口均通过 `Authorization: Bearer <token>` 进行 JWT 认证。
 
-### 4.1 `login` - 用户登录/注册
-- **入参**：`{ code }`
-- **处理**：通过 `wx.getOpenId` 获取 openId，查询 `users`，不存在则创建默认记录。
-- **返回**：用户信息（昵称、头像、等级、积分、体力）。
+### 4.1 `POST /api/auth/login` - 用户登录/注册
+- **入参**：`{ code }`（微信登录 code）
+- **处理**：通过微信 API 获取 openId，查找或创建用户，返回 JWT token。
+- **返回**：`{ token, user: { level, totalScore, stamina } }`
 
-### 4.2 `getLevelData` - 获取关卡完整数据
-- **入参**：`{ levelId }`
+### 4.2 `GET /api/levels` - 获取关卡列表
+- **返回**：`{ levels: [{ level_id, difficulty }] }`
+
+### 4.3 `GET /api/levels/:levelId` - 获取关卡完整数据
+- **处理**：读取关卡配置，初始化/读取用户进度，动态生成碎片区。
+- **返回**：`{ config, rows, cols, gridState, fragments, distractors, stamina, totalScore }`
+
+### 4.4 `POST /api/levels/:levelId/place` - 放置碎片（核心校验）
+- **入参**：`{ fragmentText, positions: [[row,col],...] }`
 - **处理**：
-  - 读取 `level_config` 获得关卡配置。
-  - 读取 `user_progress` 获得该用户当前的 `gridState`（如果未开始则根据 fixedCells 初始化全部空）。
-  - 动态生成碎片区（根据 fragments + distractors 洗牌，排除已使用的碎片）。
-- **返回**：`{config, gridState, availableFragments, stamina}`
+  1. 校验体力 > 0
+  2. 校验碎片尚未使用
+  3. 校验 positions 与后台预设一致
+  4. 逐个格子校验字符匹配
+  5. 匹配成功：更新 gridState，移除碎片，+5 分
+  6. 匹配失败：-1 体力，返回错误
+  7. 检查是否通关
+- **返回**：`{ gridState, fragments, stamina, totalScore, isComplete, idioms?, scoreDelta? }`
 
-### 4.3 `placeFragment` - 放置碎片（核心校验）
-- **入参**：`{ levelId, fragmentText, positions: [[row,col],...] }`
-  - `positions` 由前端传入（用户选择的连续空格坐标）。
-- **处理**：
-  1. 校验用户当前体力是否 > 0。
-  2. 校验该碎片尚未被使用。
-  3. 校验 `positions` 与后台 `fragments` 中该碎片的预设位置是否一致（防止作弊）。
-  4. 逐个格子校验填入的字符是否与正确答案匹配（从 `idioms` 推导）。
-  5. 若全部匹配：
-     - 更新 `user_progress` 中的 `gridState` 对应格子。
-     - 从 `availableFragments` 中移除该碎片。
-     - 增加用户积分（`+5`）。
-     - 检查是否所有碎片都已用完（通关），若通关则执行 `completeLevel` 逻辑。
-  6. 若不匹配：
-     - 扣除 1 点体力。
-     - 返回错误信息。
-- **返回**：`{ success, newGridState, remainingFragments, stamina, isComplete, totalScore }`
+### 4.5 `POST /api/levels/:levelId/hint` - 提示指定空格
+- **入参**：`{ row, col, hintType }`
+- **处理**：找到该空格应填入的碎片，返回碎片文本。
+- **消耗**：积分 -10
+- **返回**：`{ fragmentText, totalScore }`
 
-### 4.4 `useHint` - 提示指定空格
-- **入参**：`{ levelId, row, col, hintType }` （hintType: 'highlight' 或 'autoFill'）
-- **处理**：
-  - 校验该位置是否为空。
-  - 根据 `level_config` 找到该格子应填入的正确汉字。
-  - 找到包含该汉字且尚未使用的碎片。
-  - 若 `hintType = 'highlight'`：返回碎片文本。
-  - 若 `hintType = 'autoFill'`：直接调用 `placeFragment` 逻辑（需要扣减提示消耗）。
-- **消耗**：积分 -10 或 观看广告（前端判断后传入已看广告标识）。
-- **返回**：`{ fragmentText (或 filled), remainingScore }`
+### 4.6 `POST /api/levels/:levelId/reset` - 重置关卡
+- **处理**：删除用户进度，扣除体力。
+- **返回**：`{ stamina }`
 
-### 4.5 `resetLevel` - 重置关卡
-- **入参**：`{ levelId }`
-- **处理**：
-  - 删除 `user_progress` 中该关卡记录。
-  - 扣除 1 点体力（或者先行判断允许免费重置次数）。
-- **返回**：`{ success, stamina }`
+### 4.7 `GET /api/leaderboard` - 获取排行榜
+- **返回**：`{ rankings: [{ nickName, avatarUrl, level, totalScore }] }`
 
-### 4.6 `shareReward` - 分享后奖励
-- **入参**：`{ shareType }`
-- **处理**：增加体力或提示卡（根据配置）。
-- **返回**：`{ stamina, hintCards }`
+### 4.8 `GET /api/idioms/saved` - 获取收藏成语
+- **返回**：`{ idioms: [{ answer, meaning }] }`
 
-### 4.7 `dailySign` - 每日签到
-- **处理**：记录签到日期，累加连续天数，发放奖励。
+### 4.9 `POST /api/idioms/save` - 收藏成语
+- **入参**：`{ answer, meaning }`
 
-## 5. 前端关键模块实现
+## 5. 前端关键模块
 
-### 5.1 网格组件（Grid）
-- 使用 `canvas` 或 `view` 网格 + 绝对定位？  
-  推荐 **`view` 布局 + flex**（更易响应），每个格子为 `<view class="cell">`。
-- 事件：
-  - 点击空格（empty 状态）触发 `onCellTap(row, col)`，若当前处于“碎片选中模式”则尝试填充。
-  - 长按空格弹出提示菜单。
+### 5.1 入口与游戏循环
+- `game.js` → `js/main.js`：标准 Canvas 游戏循环（`requestAnimationFrame`）。
+- 循环结构：`update()` → `render()` → `requestAnimationFrame(loop)`。
+- 全局状态：`GameGlobal.databus`（DataBus 单例），`GameGlobal.main`（Main 实例）。
 
-### 5.2 碎片拖拽/点击实现方案
+### 5.2 核心模块
+| 文件 | 职责 |
+|------|------|
+| `js/main.js` | 游戏主循环、场景路由（MENU/PLAYING/EDITOR） |
+| `js/databus.js` | 全局状态管理：关卡数据、碎片、选中状态、预览模式 |
+| `js/render.js` | Canvas 初始化，导出 `SCREEN_WIDTH`/`SCREEN_HEIGHT` |
+| `js/game/MenuScreen.js` | 菜单页：关卡列表（分页）、排行榜、学习记录 |
+| `js/game/Grid.js` | 游戏网格：渲染、点击检测、碎片放置、通关处理 |
+| `js/game/FragmentBar.js` | 碎片区：多行自动换行、选择、渲染 |
+| `js/ui/HUD.js` | 顶部/底部 UI：返回、提示、洗牌、重置按钮、状态栏 |
+| `js/ui/Button.js` | 通用按钮组件：背景、文本、点击检测 |
+| `js/ui/Dialog.js` | 弹窗：通关展示、排行榜、成语收藏、分享 |
+| `js/api/index.js` | API 封装：封装 `wx.request` 调用所有后端接口 |
 
-#### 方案一：纯点击（简单可靠）
-1. 用户点击碎片区某个碎片 → 该碎片高亮，进入“待放置”状态。
-2. 用户点击某个空格（或连续拖拽选择多个空格）→ 尝试放置。
-3. 放置失败则碎片恢复高亮，可重选。
+### 5.3 碎片点击交互
+1. 用户点击碎片区某个碎片 → 碎片高亮（橙色边框）。
+2. 单字碎片：用户点击一个空格 → 调用 `placeFragment`。
+3. 多字碎片：用户依次点击两个相邻空格 → 校验连续性 → 调用 `placeFragment`。
+4. 放置失败：碎片退回，体力-1；放置成功：碎片从碎片区移除。
 
-#### 方案二：拖拽（体验更好但开发复杂）
-- 使用小程序 `movable-view` + `movable-area` 实现拖拽。
-- 拖拽结束时根据落点坐标计算最近的空格。
-- 多字碎片需要记录拖拽轨迹上的所有空格。
+### 5.4 网格动态尺寸
+- 根据屏幕宽度和网格列数动态计算 cellSize：`Math.min(54, floor((maxWidth - gaps) / cols))`。
+- 保证 6-7 列宽网格在小屏幕上完整显示。
 
-**推荐第一期采用方案一（点击模式）**，后续版本升级拖拽。
+### 5.5 预览模式
+- `DataBus.previewMode` 标志位控制。
+- 预览模式下 Grid、FragmentBar、HUD 的所有操作按钮均返回 toast 提示"预览模式，无法操作"。
+- 标题栏显示"[预览]"标识。
 
-### 5.3 碎片区数据结构（前端维护）
-```typescript
-interface Fragment {
-  text: string;       // 显示文本
-  length: number;     // 1 或 2
-  used: boolean;      // 是否已被使用
-  positions?: [number, number][]; // 后台预设位置，仅用于校验
-}
+### 5.6 关卡分页
+- `MenuScreen` 维护 `page`、`perPage=18`、`totalPages` 状态。
+- 每页 3 列 × 6 行，底部提供上一页/下一页按钮和页码指示器。
+
+## 6. 关卡生成系统
+
+### 6.1 基础模式（`generateLevels.js`）
+- 成语独立放置在各自的行或列，互不交叉。
+- 支持横向和纵向成语混合。
+- 参数：关卡号、难度、成语列表、横向数量、纵向数量、总列数。
+
+### 6.2 纵横字谜模式（`generateCrosswordLevels.js`）
+- 基于字符索引 (`char → [{poolIdx, charIdx, idiom}]`) 的交叉算法。
+- 算法流程：
+  1. 随机选择第一个成语，水平放置在网格中央。
+  2. 遍历网格中已填充的每个字符，在字符索引中查找包含相同字符的其他成语。
+  3. 找到可交叉的成语后，垂直于现有成语放置（水平→垂直，垂直→水平）。
+  4. 校验边界和冲突（交叉点字符必须匹配）。
+  5. 若找不到交叉点，降级为非交叉放置。
+  6. 每个关卡重试 5 次（不同随机种子），确保生成足够的成语。
+- 生成 100 关（101-200），渐进难度。
+- 结果输出为 `crosswordLevels.json`，由 `seedLevels.js` 统一导入。
+
+## 7. 安全性设计
+
+- **所有游戏逻辑在服务端执行**：碎片匹配、体力扣减、积分增加均在 Express 路由中处理。
+- **正确答案不泄露**：`getLevelData` 返回的 fragments 不包含正确答案位置信息（客户端仅用于渲染，校验在服务端）。
+- **JWT 认证**：所有 API 请求需携带 token，token 由微信 code 换取。
+- **服务端校验 positions**：客户端传入的放置位置必须与后台预设完全一致。
+
+## 8. 部署
+
+- **开发环境**：Express 本地运行于 `localhost:3000`，MySQL 本地实例 `cygame_dev`。
+- **微信开发者工具**：加载项目目录，`project.config.json` 配置小游戏编译类型。
+- **初始化**：
+  1. `npm install` 安装依赖。
+  2. 配置 MySQL 连接（`server/config/database.js`）。
+  3. 运行 `node server/seeds/seedLevels.js` 初始化数据库和关卡数据。
+  4. 启动 `node server/app.js`。
+
+## 9. 文件结构
+
 ```
-
-### 5.4 关卡初始化流程
-1. 调用 `getLevelData` 获取 `config`, `gridState`, `availableFragments`。
-2. 渲染网格：根据 `gridState` 显示固定字、用户已填字、空格。
-3. 渲染碎片区：将 `availableFragments` 转换为前端碎片对象，随机打乱顺序。
-4. 注册全局状态：当前选中的碎片（`selectedFragment`）。
-
-### 5.5 正确性校验（前端乐观更新 + 后端兜底）
-- 前端可在用户放置碎片时**先本地模拟校验**（根据后台下发的正确答案映射），快速反馈。
-- 最终必须调用云函数 `placeFragment` 进行后端校验并更新数据库。
-- 优化：如果本地校验失败，直接提示错误，不调用后端（节省云函数调用量）。
-
-## 6. 体力恢复机制
-
-前端记录 `lastStaminaRecover` 和本地体力的上一次更新时间，采用**客户端轮询 + 云端对账**：
-- 每进入小程序或每隔 30 秒，本地尝试增加体力（根据上次恢复时间计算是否满5分钟）。
-- 发送请求 `recoverStamina` 云函数，云函数基于数据库的 `lastStaminaRecover` 真实增加体力（防止篡改）。
-
-## 7. 多字碎片放置交互设计
-
-- 用户点击一个多字碎片（length=2）后，界面提示“请点击第一个格子，再点击相邻的第二个格子（同行或同列）”。
-- 前端记录第一次点击的格子，第二次点击时判断是否连续（行相同且列差=1 或列相同且行差=1）。
-- 若连续，则调用 `placeFragment` 并传入两个格子的坐标；否则提示并要求重新选择。
-
-## 8. 安全性设计
-
-- **所有游戏逻辑（碎片匹配、体力扣减、积分增加）均在云函数中执行**，前端只做UI展示。
-- 关卡正确答案不在前端明文存储，云函数返回 `gridState` 时只返回用户已填或固定字符，不返回未填空的正确答案。
-- 用户操作时云函数根据 `level_config` 重新计算碎片预设位置，前端传入的 `positions` 必须与后台一致，否则视为作弊拒绝操作。
-- 使用微信 `checkSession` 确保 openId 有效。
-
-## 9. 性能优化
-
-- **关卡配置缓存**：将用户当前关卡的 `level_config` 缓存到本地 Storage（设置版本号，当后台更新时提示刷新）。
-- **碎片区渲染**：`availableFragments` 数量较少（<20），使用 `wx:for` 即可，无需虚拟列表。
-- **云函数响应时间**：对 `placeFragment` 进行原子操作（利用数据库事务），耗时控制在 100ms 内。
-
-## 10. 部署与发布
-
-### 10.1 云开发环境初始化
-1. 在微信开发者工具中开通云开发，创建环境 `prod`。
-2. 创建上述数据库集合，并设置权限（`users` 仅创建者可写，`level_config` 所有用户可读）。
-3. 上传云函数并部署。
-
-### 10.2 关卡配置导入
-- 编写一个 Node.js 脚本，将 Excel 中的关卡数据转换为 JSON，通过 `wx.cloud.callFunction` 或云开发控制台导入 `level_config`。
-
-### 10.3 版本控制
-- 小程序代码提交到 git 仓库，分支 `master` 为生产环境。
-
-## 11. 监控与日志
-
-- 使用云开发日志查询 `placeFragment` 的错误率。
-- 关键指标埋点（通过 `wx.reportEvent`）：
-  - `level_start`
-  - `fragment_place_success/fail`
-  - `hint_use`
-  - `level_complete`
-- 接入微信小程序“数据分析”面板，查看页面访问量、用户留存。
-
-## 12. 开发周期估算（3人团队）
-
-| 阶段 | 工作内容 | 天数 |
-|------|----------|------|
-| 第1周 | 数据库设计、云函数搭建、登录/关卡获取API | 5 |
-| 第2周 | 前端网格组件、碎片区交互、基础放置逻辑 | 5 |
-| 第3周 | 提示系统、体力/积分、重置关卡、通关动画 | 5 |
-| 第4周 | 后台关卡编辑器（简易版）、导入30个关卡、测试与修复 | 5 |
-| 第5周 | 性能优化、安全加固、提交审核、上线 | 3 |
-
-总计约 5 周完成 MVP。
+cygame/
+├── game.js                    # 微信小游戏入口
+├── game.json                  # 小游戏配置
+├── project.config.json        # 微信开发者工具配置
+├── js/
+│   ├── main.js                # 游戏主循环
+│   ├── databus.js             # 全局状态管理
+│   ├── render.js              # Canvas 初始化
+│   ├── api/
+│   │   └── index.js           # API 请求封装
+│   ├── game/
+│   │   ├── MenuScreen.js      # 菜单页
+│   │   ├── Grid.js            # 游戏网格
+│   │   └── FragmentBar.js     # 碎片区
+│   └── ui/
+│       ├── Button.js          # 按钮组件
+│       ├── Dialog.js          # 弹窗组件
+│       └── HUD.js             # 界面头部和底部
+├── server/
+│   ├── app.js                 # Express 入口
+│   ├── config/
+│   │   └── database.js        # 数据库配置
+│   ├── models/                # Sequelize 模型
+│   ├── routes/                # API 路由
+│   ├── services/              # 业务逻辑层
+│   └── seeds/
+│       ├── seedLevels.js      # 数据库初始化
+│       ├── generateLevels.js  # 基础关卡生成器
+│       └── generateCrosswordLevels.js  # 纵横字谜生成器
+├── prd.md                     # 产品需求文档
+└── tech.md                    # 技术文档（本文件）
+```

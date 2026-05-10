@@ -1,9 +1,18 @@
 const { LevelConfig, UserProgress, User } = require('../models');
 
 async function getLevelList() {
-  return LevelConfig.findAll({
-    attributes: ['level_id', 'difficulty', 'rows', 'cols', 'min_score'],
+  const configs = await LevelConfig.findAll({
     order: [['level_id', 'ASC']],
+  });
+  return configs.map(config => {
+    const dims = calculateEffectiveDimensions(config);
+    return {
+      level_id: config.level_id,
+      difficulty: config.difficulty,
+      rows: dims.rows,
+      cols: dims.cols,
+      min_score: config.min_score,
+    };
   });
 }
 
@@ -11,11 +20,13 @@ async function getLevelData(levelId, userId) {
   const config = await LevelConfig.findOne({ where: { level_id: levelId } });
   if (!config) throw Object.assign(new Error('关卡不存在'), { status: 404 });
 
+  const dims = calculateEffectiveDimensions(config);
+
   let progress = await UserProgress.findOne({ where: { user_id: userId, level_id: levelId } });
   if (!progress) {
     const gridState = [];
-    for (let r = 0; r < config.rows; r++) {
-      gridState[r] = new Array(config.cols).fill(null);
+    for (let r = 0; r < dims.rows; r++) {
+      gridState[r] = new Array(dims.cols).fill(null);
     }
     for (const cell of config.fixed_cells) {
       gridState[cell.row][cell.col] = cell.char;
@@ -30,16 +41,50 @@ async function getLevelData(levelId, userId) {
 
   const used = progress.used_fragments || [];
   const allFragments = [...config.fragments];
-  const availableFragments = allFragments.filter(f => !used.includes(f.text));
+  const availableFragments = allFragments.filter(f => {
+    const key = f.text + '_' + JSON.stringify(f.positions);
+    return !used.includes(key);
+  });
   availableFragments.sort(() => Math.random() - 0.5);
 
   return {
     levelId: config.level_id,
-    rows: config.rows,
-    cols: config.cols,
+    rows: dims.rows,
+    cols: dims.cols,
     gridState: progress.grid_state,
     fragments: availableFragments,
     distractors: config.distractors || [],
+  };
+}
+
+function calculateEffectiveDimensions(config) {
+  let minRow = Infinity, maxRow = -Infinity;
+  let minCol = Infinity, maxCol = -Infinity;
+
+  for (const idiom of config.idioms) {
+    if (idiom.direction === 'horizontal') {
+      minRow = Math.min(minRow, idiom.row);
+      maxRow = Math.max(maxRow, idiom.row);
+      minCol = Math.min(minCol, idiom.startCol);
+      maxCol = Math.max(maxCol, idiom.endCol);
+    } else {
+      minRow = Math.min(minRow, idiom.startRow);
+      maxRow = Math.max(maxRow, idiom.endRow);
+      minCol = Math.min(minCol, idiom.col);
+      maxCol = Math.max(maxCol, idiom.col);
+    }
+  }
+
+  for (const cell of config.fixed_cells || []) {
+    minRow = Math.min(minRow, cell.row);
+    maxRow = Math.max(maxRow, cell.row);
+    minCol = Math.min(minCol, cell.col);
+    maxCol = Math.max(maxCol, cell.col);
+  }
+
+  return {
+    rows: maxRow - minRow + 1,
+    cols: maxCol - minCol + 1,
   };
 }
 
@@ -62,4 +107,4 @@ function buildAnswerMap(config) {
   return map;
 }
 
-module.exports = { getLevelList, getLevelData, buildAnswerMap };
+module.exports = { getLevelList, getLevelData, buildAnswerMap, calculateEffectiveDimensions };

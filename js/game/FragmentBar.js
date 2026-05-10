@@ -4,9 +4,9 @@ import { PlaceState } from '../databus';
 export class FragmentBar {
   constructor() {
     this.itemW = 56;
-    this.itemH = 40;
-    this.gap = 8;
-    this.paddingX = 12;
+    this.itemH = 42;
+    this.gap = 10;
+    this.paddingX = 14;
     this.rowGap = 8;
     this.startY = 0;
     this._items = [];
@@ -19,8 +19,14 @@ export class FragmentBar {
       ...db.distractors.map(d => ({ text: d.text, length: d.length, positions: null, isDistractor: true })),
     ];
 
-    const gridBottom = 70 + db.rows * (52 + 4);
-    this.startY = Math.max(gridBottom + 10, SCREEN_WIDTH * 0.92);
+    // Match Grid's dynamic cell size calculation
+    const panelPad = 16;
+    const maxGridW = SCREEN_WIDTH - panelPad * 2;
+    const gap = 5;
+    const cellSize = Math.min(54, Math.floor((maxGridW - (db.cols - 1) * gap) / db.cols));
+    const gridH = db.rows * cellSize + (db.rows - 1) * gap;
+    const gridBottom = 138 + 16 + gridH;
+    this.startY = Math.max(gridBottom + 14, SCREEN_WIDTH * 0.88);
     const maxW = SCREEN_WIDTH - this.paddingX * 2;
 
     this._items = [];
@@ -65,6 +71,7 @@ export class FragmentBar {
 
   onTouch(x, y) {
     const db = GameGlobal.databus;
+    if (db.previewMode) { db.showToast('预览模式，无法操作'); return; }
     const frag = this.getFragmentAt(x, y);
     if (!frag) { db.reset(); return; }
 
@@ -73,7 +80,12 @@ export class FragmentBar {
       return;
     }
 
-    if (db.selectedFragment && db.selectedFragment.text === frag.text) {
+    if (db.firstCell && !db.selectedFragment && frag.length === 1) {
+      GameGlobal.main.grid.placeFragment(frag, [db.firstCell]);
+      return;
+    }
+
+    if (db.selectedFragment && db.selectedFragment.uid === frag.uid) {
       db.reset();
     } else {
       db.selectedFragment = frag;
@@ -89,40 +101,68 @@ export class FragmentBar {
     const items = this.getLayout();
     const db = GameGlobal.databus;
 
+    // Fragment area background
+    const barTop = this.startY - 8;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillRect(0, barTop, SCREEN_WIDTH, this.totalHeight + 16);
+    ctx.fillStyle = 'rgba(0,0,0,0.04)';
+    ctx.fillRect(0, barTop, SCREEN_WIDTH, 1);
+
     for (const item of items) {
       const { x, y, w, h, text, isDistractor } = item;
-      const isSelected = db.selectedFragment && db.selectedFragment.text === text;
+      const isSelected = db.selectedFragment && db.selectedFragment.uid === item.uid;
 
-      if (isDistractor) {
-        ctx.fillStyle = '#f0e6d0';
-      } else if (isSelected) {
-        ctx.fillStyle = '#ffcc80';
-      } else {
-        ctx.fillStyle = '#e8f0e8';
-      }
-
-      ctx.strokeStyle = isSelected ? '#ff6600' : '#b0b0b0';
-      ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.beginPath();
-      const r = 6;
-      ctx.moveTo(x + r, y);
-      ctx.lineTo(x + w - r, y);
-      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-      ctx.lineTo(x + w, y + h - r);
-      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-      ctx.lineTo(x + r, y + h);
-      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-      ctx.lineTo(x, y + r);
-      ctx.quadraticCurveTo(x, y, x + r, y);
-      ctx.closePath();
+      // Card shadow
+      ctx.fillStyle = isSelected ? 'rgba(255,152,0,0.25)' : 'rgba(0,0,0,0.06)';
+      this._roundRect(ctx, x + 1, y + 2, w, h, 8);
       ctx.fill();
+
+      // Card background
+      if (isDistractor) {
+        const grad = ctx.createLinearGradient(x, y, x, y + h);
+        grad.addColorStop(0, '#f5efe0');
+        grad.addColorStop(1, '#ede0c8');
+        ctx.fillStyle = grad;
+      } else if (isSelected) {
+        const grad = ctx.createLinearGradient(x, y, x, y + h);
+        grad.addColorStop(0, '#fff3e0');
+        grad.addColorStop(1, '#ffe0b2');
+        ctx.fillStyle = grad;
+      } else {
+        const grad = ctx.createLinearGradient(x, y, x, y + h);
+        grad.addColorStop(0, '#f0f4f0');
+        grad.addColorStop(1, '#e2ece2');
+        ctx.fillStyle = grad;
+      }
+      this._roundRect(ctx, x, y, w, h, 8);
+      ctx.fill();
+
+      // Card border
+      ctx.strokeStyle = isSelected ? '#ff9800' : (isDistractor ? '#d8c8a8' : '#c0c8c0');
+      ctx.lineWidth = isSelected ? 2 : 1;
+      this._roundRect(ctx, x, y, w, h, 8);
       ctx.stroke();
 
-      ctx.fillStyle = '#333';
-      ctx.font = 'bold 16px sans-serif';
+      // Text
+      ctx.fillStyle = isDistractor ? '#8a7a6a' : '#333';
+      ctx.font = 'bold 17px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(text, x + w / 2, y + h / 2);
+      ctx.fillText(text, x + w / 2, y + h / 2 + 1);
     }
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
   }
 }

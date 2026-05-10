@@ -11,26 +11,43 @@ export class Button {
   }
 
   draw(ctx) {
-    ctx.fillStyle = this.enabled ? this.color : '#cccccc';
-    ctx.beginPath();
-    const r = 8;
-    ctx.moveTo(this.x + r, this.y);
-    ctx.lineTo(this.x + this.width - r, this.y);
-    ctx.quadraticCurveTo(this.x + this.width, this.y, this.x + this.width, this.y + r);
-    ctx.lineTo(this.x + this.width, this.y + this.height - r);
-    ctx.quadraticCurveTo(this.x + this.width, this.y + this.height, this.x + this.width - r, this.y + this.height);
-    ctx.lineTo(this.x + r, this.y + this.height);
-    ctx.quadraticCurveTo(this.x, this.y + this.height, this.x, this.y + this.height - r);
-    ctx.lineTo(this.x, this.y + r);
-    ctx.quadraticCurveTo(this.x, this.y, this.x + r, this.y);
-    ctx.closePath();
+    const baseColor = this.enabled ? this.color : '#cccccc';
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.10)';
+    this._roundRect(ctx, this.x + 1, this.y + 2, this.width, this.height, 8);
     ctx.fill();
 
+    // Button body
+    ctx.fillStyle = baseColor;
+    this._roundRect(ctx, this.x, this.y, this.width, this.height, 8);
+    ctx.fill();
+
+    // Subtle top highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    this._roundRect(ctx, this.x + 2, this.y + 1, this.width - 4, this.height / 2, 6);
+    ctx.fill();
+
+    // Label
     ctx.fillStyle = '#ffffff';
-    ctx.font = '16px sans-serif';
+    ctx.font = 'bold 14px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(this.label, this.x + this.width / 2, this.y + this.height / 2);
+    ctx.fillText(this.label, this.x + this.width / 2, this.y + this.height / 2 + 1);
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
   }
 
   hitTest(px, py) {

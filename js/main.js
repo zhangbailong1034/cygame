@@ -58,8 +58,29 @@ export default class Main {
     const db = GameGlobal.databus;
 
     if (this.dialog.visible) {
-      const btn = this.dialog.hitTest(x, y);
-      if (btn && btn.onClick) { btn.onClick(); return; }
+      const hit = this.dialog.hitTest(x, y);
+      if (!hit) return;
+      if (hit.onClick) { hit.onClick(); return; }
+      if (hit.type === 'learn' || hit.type === 'idiom') {
+        this.dialog.expandedIdx = this.dialog.expandedIdx === hit.idx ? -1 : hit.idx;
+        return;
+      }
+      if (hit.type === 'save') {
+        const idiom = this.dialog.idioms[this.dialog.expandedIdx];
+        if (idiom && !db.savedIdioms.some(s => s.answer === idiom.answer)) {
+          db.savedIdioms.push({ answer: idiom.answer, meaning: idiom.meaning });
+          db.showToast('已记录：' + idiom.answer);
+        }
+        return;
+      }
+      if (hit.type === 'share') {
+        const idiom = this.dialog.idioms[this.dialog.expandedIdx];
+        if (idiom) {
+          try { wx.shareAppMessage({ title: idiom.answer + ' - ' + idiom.meaning }); } catch (e) { /* ignore */ }
+          db.showToast('已分享：' + idiom.answer);
+        }
+        return;
+      }
       return;
     }
 
@@ -106,7 +127,12 @@ export default class Main {
     const db = GameGlobal.databus;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = '#f5f0e8';
+    // Background: warm gradient with subtle texture effect
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bgGrad.addColorStop(0, '#f8f3e8');
+    bgGrad.addColorStop(0.5, '#f0ece0');
+    bgGrad.addColorStop(1, '#e8e2d4');
+    ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (db.screen === ScreenState.MENU) {
