@@ -69,6 +69,14 @@ export default class Main {
   }
 
   handleTouch(x, y) {
+    try {
+      this._handleTouch(x, y);
+    } catch (e) {
+      console.log('[Main] touch error:', e);
+    }
+  }
+
+  _handleTouch(x, y) {
     const db = GameGlobal.databus;
 
     // 首次触摸解锁音频
@@ -190,6 +198,7 @@ export default class Main {
     }
 
     this.toast.draw(ctx);
+    this.dailySign.draw(ctx);
     this.tutorial.draw(ctx);
     this.dialog.draw(ctx);
   }
