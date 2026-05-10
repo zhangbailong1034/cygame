@@ -10,6 +10,8 @@ const User = sequelize.define('User', {
   total_score: { type: DataTypes.INTEGER, defaultValue: 0 },
   stamina: { type: DataTypes.INTEGER, defaultValue: 10 },
   last_stamina_recover: { type: DataTypes.DATE, defaultValue: null },
+  last_sign_date: { type: DataTypes.DATEONLY, defaultValue: null },
+  sign_streak: { type: DataTypes.INTEGER, defaultValue: 0 },
 }, { tableName: 'users' });
 
 module.exports = User;
