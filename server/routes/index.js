@@ -13,6 +13,7 @@ router.post('/auth/login', authCtrl.login);
 router.get('/user/me', auth, authCtrl.getMe);
 router.post('/user/recover-stamina', auth, authCtrl.recoverStamina);
 router.post('/user/daily-sign', auth, authCtrl.dailySign);
+router.post('/user/double-score', auth, authCtrl.doubleScore);
 
 router.get('/levels', auth, levelCtrl.getLevelList);
 router.get('/levels/:levelId', auth, levelCtrl.getLevelData);
