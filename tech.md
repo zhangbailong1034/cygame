@@ -46,6 +46,8 @@ MySQL 数据库 (cygame_dev)
 | totalScore | INT | 总积分 |
 | stamina | INT | 当前体力值（上限10） |
 | lastStaminaRecover | DATE | 上次体力恢复时间 |
+| lastSignDate | DATEONLY | 上次签到日期 |
+| signStreak | INT | 连续签到天数 |
 
 ### 3.2 `level_configs` 表（关卡静态配置）
 | 字段 | 类型 | 说明 |
@@ -135,6 +137,11 @@ MySQL 数据库 (cygame_dev)
 ### 4.9 `POST /api/idioms/save` - 收藏成语
 - **入参**：`{ answer, meaning }`
 
+### 4.10 `POST /api/user/double-score` - 积分翻倍
+- **入参**：`{ scoreDelta }`
+- **处理**：将 scoreDelta 加到用户 totalScore
+- **返回**：`{ totalScore }`
+
 ## 5. 前端关键模块
 
 ### 5.1 入口与游戏循环
@@ -154,6 +161,10 @@ MySQL 数据库 (cygame_dev)
 | `js/ui/HUD.js` | 顶部/底部 UI：返回、提示、洗牌、重置按钮、状态栏 |
 | `js/ui/Button.js` | 通用按钮组件：背景、文本、点击检测 |
 | `js/ui/Dialog.js` | 弹窗：通关展示、排行榜、成语收藏、分享 |
+| `js/ads/AdManager.js` | 广告管理器：激励视频 + Banner 广告 |
+| `js/audio/SoundManager.js` | 音效管理：背景音乐 + UI 音效，静音控制 |
+| `js/game/DailySign.js` | 每日签到面板：7 天阶梯奖励，Canvas 绘制 |
+| `js/game/Tutorial.js` | 新手引导：5 步遮罩引导，持久化完成状态 |
 | `js/api/index.js` | API 封装：封装 `wx.request` 调用所有后端接口 |
 
 ### 5.3 碎片点击交互
