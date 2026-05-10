@@ -42,6 +42,17 @@ export default class DataBus {
 
   savedIdioms = []; // { answer, meaning }
 
+  // 广告 & 签到
+  hintCards = 0;
+  todaySigned = false;
+  signStreak = 0;
+
+  // 音效
+  soundMuted = false;
+
+  // 引导
+  tutorialDone = false;
+
   constructor() {
     if (instance) return instance;
     instance = this;
