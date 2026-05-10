@@ -47,7 +47,7 @@ export class SoundManager {
     this._bgmCtx.stop();
     this._bgmCtx.src = src;
     this._bgmCtx.loop = true;
-    this._bgmCtx.play().catch(() => {});
+    try { const p = this._bgmCtx.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
   }
 
   stopBgm() {
@@ -64,7 +64,7 @@ export class SoundManager {
     if (!src) return;
     this._sfxCtx.stop();
     this._sfxCtx.src = src;
-    this._sfxCtx.play().catch(() => {});
+    try { const p = this._sfxCtx.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
   }
 
   toggleMute() {
