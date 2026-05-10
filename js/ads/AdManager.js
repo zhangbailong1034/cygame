@@ -1,7 +1,11 @@
+// 替换为微信公众平台获取的真实广告单元 ID
 const AD_UNITS = {
   rewarded: 'adunit-xxxxxxxx',
   banner: 'adunit-yyyyyyyy',
 };
+
+// 开发模拟模式：跳过真实广告 API，直接发放奖励（发布时改为 false）
+const DEV_MODE = true;
 
 export class AdManager {
   constructor() {
@@ -12,6 +16,11 @@ export class AdManager {
   }
 
   init() {
+    if (DEV_MODE) {
+      console.log('[Ad] 开发模式：广告模拟已启用，点击广告按钮直接发放奖励');
+      return;
+    }
+
     try {
       this.rewardedVideoAd = wx.createRewardedVideoAd({ adUnitId: AD_UNITS.rewarded });
       this.rewardedVideoAd.onLoad(() => {});
@@ -37,12 +46,20 @@ export class AdManager {
   }
 
   showRewarded(type, cb) {
+    this.pendingReward = type;
+    this.onRewardCallback = cb || null;
+
+    // 开发模拟模式：跳过真实广告，直接发奖励
+    if (DEV_MODE) {
+      GameGlobal.databus.showToast('模拟广告观看中...');
+      setTimeout(() => this._grantReward(), 800);
+      return;
+    }
+
     if (!this.rewardedVideoAd) {
       GameGlobal.databus.showToast('广告功能暂不可用');
       return;
     }
-    this.pendingReward = type;
-    this.onRewardCallback = cb || null;
     this.rewardedVideoAd.show().catch(() => {
       this.rewardedVideoAd.load().then(() => this.rewardedVideoAd.show()).catch(() => {
         GameGlobal.databus.showToast('广告加载失败，请稍后再试');
@@ -75,12 +92,14 @@ export class AdManager {
   }
 
   showBanner() {
+    if (DEV_MODE) return;
     if (this.bannerAd) {
       this.bannerAd.show().catch(() => {});
     }
   }
 
   hideBanner() {
+    if (DEV_MODE) return;
     if (this.bannerAd) {
       this.bannerAd.hide().catch(() => {});
     }
