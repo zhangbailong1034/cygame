@@ -106,6 +106,7 @@ export class Grid {
     const db = GameGlobal.databus;
     api.placeFragment(db.levelId, frag.text, positions.map(p => [p.row, p.col]))
       .then(res => {
+        GameGlobal.main.soundManager.playSfx('place_ok');
         db.gridState = res.gridState;
         db.fragments = res.fragments
           ? res.fragments.map((f, i) => ({
@@ -121,34 +122,55 @@ export class Grid {
         db.reset();
         this.highlightCell = null;
         if (res.isComplete) {
+          GameGlobal.main.soundManager.playSfx('complete');
           db.currentLevel = Math.max(db.currentLevel, db.levelId + 1);
-          GameGlobal.main.dialog.showIdioms(
-            '恭喜通关！',
-            res.idioms || [],
-            res.scoreDelta,
-            [
-              {
-                label: '下一关',
-                color: '#4a90d9',
-                onClick: () => {
-                  GameGlobal.main.dialog.hide();
-                  GameGlobal.main.menu.startLevel(db.levelId + 1);
-                }
-              },
-              {
-                label: '返回',
-                color: '#999',
-                onClick: () => {
-                  GameGlobal.main.dialog.hide();
-                  db.screen = ScreenState.MENU;
-                  GameGlobal.main.menu.loadLevels();
-                }
+          const scoreDelta = res.scoreDelta || 0;
+          const buttons = [];
+
+          if (scoreDelta > 0) {
+            buttons.push({
+              label: '翻倍积分',
+              color: '#ff9800',
+              onClick: () => {
+                GameGlobal.main.adManager.showRewarded('double_score', () => {
+                  api.doubleScore(scoreDelta).then(r => {
+                    db.totalScore = r.totalScore;
+                    GameGlobal.main.dialog.hide();
+                    GameGlobal.main.dialog.showIdioms('积分翻倍！', res.idioms || [], scoreDelta, [
+                      { label: '下一关', color: '#4a90d9', onClick: () => { GameGlobal.main.dialog.hide(); GameGlobal.main.menu.startLevel(db.levelId + 1); } },
+                      { label: '返回', color: '#999', onClick: () => { GameGlobal.main.dialog.hide(); db.screen = ScreenState.MENU; GameGlobal.main.menu.loadLevels(); } }
+                    ]);
+                  });
+                });
               }
-            ]
+            });
+          }
+
+          buttons.push(
+            {
+              label: '下一关',
+              color: '#4a90d9',
+              onClick: () => {
+                GameGlobal.main.dialog.hide();
+                GameGlobal.main.menu.startLevel(db.levelId + 1);
+              }
+            },
+            {
+              label: '返回',
+              color: '#999',
+              onClick: () => {
+                GameGlobal.main.dialog.hide();
+                db.screen = ScreenState.MENU;
+                GameGlobal.main.menu.loadLevels();
+              }
+            }
           );
+
+          GameGlobal.main.dialog.showIdioms('恭喜通关！', res.idioms || [], scoreDelta, buttons);
         }
       })
       .catch(err => {
+        GameGlobal.main.soundManager.playSfx('place_fail');
         db.stamina = err.stamina !== undefined ? err.stamina : db.stamina;
         db.showToast(err.message || '位置不对');
         db.reset();

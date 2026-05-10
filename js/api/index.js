@@ -41,6 +41,7 @@ export const api = {
   saveLevel: (data) => request('POST', '/editor/save', data),
   deleteLevel: (levelId) => request('DELETE', '/editor/' + levelId),
   getLeaderboard: () => request('GET', '/leaderboard'),
+  doubleScore: (scoreDelta) => request('POST', '/user/double-score', { scoreDelta }),
   setToken,
   getToken,
 };
