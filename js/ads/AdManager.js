@@ -52,7 +52,7 @@ export class AdManager {
 
   _grantReward() {
     const db = GameGlobal.databus;
-    const api = require('../api/index').api;
+    const api = GameGlobal.main.api;
 
     switch (this.pendingReward) {
       case 'stamina':

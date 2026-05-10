@@ -29,10 +29,10 @@ export class DailySign {
     this.animTimer = 0;
     this.animParticles = [];
     if (this.todaySigned) {
-      this.signBtn.text = '已签到 ✓';
+      this.signBtn.label = '已签到 ✓';
       this.signBtn.color = '#b0b0b0';
     } else {
-      this.signBtn.text = '签到';
+      this.signBtn.label = '签到';
       this.signBtn.color = '#e8a840';
     }
   }
@@ -51,7 +51,7 @@ export class DailySign {
       db.todaySigned = true;
       db.signStreak = res.reward.streak;
       this.todaySigned = true;
-      this.signBtn.text = '已签到 ✓';
+      this.signBtn.label = '已签到 ✓';
       this.signBtn.color = '#b0b0b0';
       this.streak = res.reward.streak;
       this._startAnim();

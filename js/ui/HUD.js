@@ -25,7 +25,7 @@ export class HUD {
     this.muteBtn = new Button(0, 0, 38, 28, '🔊', 'rgba(255,255,255,0.22)');
     this.muteBtn.onClick = () => {
       GameGlobal.main.soundManager.toggleMute();
-      this.muteBtn.text = GameGlobal.main.soundManager.muted ? '🔇' : '🔊';
+      this.muteBtn.label = GameGlobal.main.soundManager.muted ? '🔇' : '🔊';
     };
 
     this.allButtons = [this.hintBtn, this.shuffleBtn, this.resetBtn, this.backBtn, this.muteBtn];

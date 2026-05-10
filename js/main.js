@@ -29,6 +29,7 @@ export default class Main {
     this.dailySign = new DailySign();
     this.tutorial = new Tutorial();
 
+    this.api = api;
     this.adManager.init();
     this.soundManager.init();
     this.staminaTimer = 0;
