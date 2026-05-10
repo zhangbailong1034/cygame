@@ -22,7 +22,13 @@ export class HUD {
     this.shuffleBtn.onClick = () => this.handleShuffle();
     this.resetBtn.onClick = () => this.handleReset();
 
-    this.allButtons = [this.hintBtn, this.shuffleBtn, this.resetBtn, this.backBtn];
+    this.muteBtn = new Button(0, 0, 38, 28, '🔊', 'rgba(255,255,255,0.22)');
+    this.muteBtn.onClick = () => {
+      GameGlobal.main.soundManager.toggleMute();
+      this.muteBtn.text = GameGlobal.main.soundManager.muted ? '🔇' : '🔊';
+    };
+
+    this.allButtons = [this.hintBtn, this.shuffleBtn, this.resetBtn, this.backBtn, this.muteBtn];
   }
 
   getLayout() {
@@ -39,6 +45,9 @@ export class HUD {
 
     this.backBtn.x = 8;
     this.backBtn.y = (this.headerH - 28) / 2;
+
+    this.muteBtn.x = 62;
+    this.muteBtn.y = (this.headerH - 28) / 2;
 
     this.yBottom = btnY;
   }
