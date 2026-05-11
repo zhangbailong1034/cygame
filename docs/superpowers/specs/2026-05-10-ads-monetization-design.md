@@ -1,12 +1,13 @@
-# 设计文档：广告系统、签到、新手引导、音效
+# 设计文档：广告系统、签到、新手引导、音效、滚动与UI优化
 
 | 版本 | 日期 | 作者 | 变更 |
 |------|------|------|------|
 | V1.0 | 2026-05-10 | AI助手 | 初版 |
+| V1.1 | 2026-05-11 | AI助手 | 新增菜单页滚动、游戏页统一滚动、HUD拆分、UI布局优化 |
 
 ## 1. 概述
 
-为成语拼拼乐微信小游戏添加激励视频广告（Banner 广告为辅）、每日签到、新手引导和音效系统。所有新增功能采用独立模块，通过 DataBus 和现有组件通信。
+为成语拼拼乐微信小游戏添加激励视频广告（Banner 广告为辅）、每日签到、新手引导和音效系统。所有新增功能采用独立模块，通过 DataBus 和现有组件通信。V1.1 新增菜单页滚动、游戏页统一滚动（体力+网格+碎片整体滚动）、HUD 组件拆分重构（固定头部/可滚动状态区/固定底部）及 UI 布局优化。
 
 ## 2. 模块一：广告管理器 (AdManager)
 
@@ -310,7 +311,155 @@ class Main {
 
 ---
 
-## 9. 文件改动清单
+## 9. 菜单页滚动 (MenuScreen Scroll)
+
+**文件：** `js/game/MenuScreen.js`
+
+### 9.1 功能
+- 当关卡按钮 + 底部控制按钮（排行榜、学习、编辑器、广告等）总高度超出屏幕时，菜单页内容区域可纵向滚动
+- 触摸拖动滚动 + 惯性动画，8px 拖动阈值区分点击与滚动
+- 右侧滚动条指示当前位置
+
+### 9.2 实现细节
+- `buildButtons()` 计算 `contentHeight` 和 `maxScrollY`（contentHeight - 可视区域高度）
+- `draw(ctx)` 渲染流程：背景 → 裁剪区域 → 内容 `translate(0, -scrollY)` → 恢复 → 固定静音按钮 → 滚动条
+- 触摸事件：`onTouchStart` 记录起始位置，`onTouchMove` 检测 8px 阈值后开始滚动，`onTouchEnd` 判断点击（无拖动）或启动惯性动画
+- 翻页时重置 `scrollY = 0`
+- 惯性动画使用 `requestAnimationFrame` + 衰减系数 `0.92`，递增 ID 防止动画冲突
+
+---
+
+## 10. 游戏页统一滚动 (Unified Game Scroll)
+
+**文件：** `js/main.js`
+
+### 10.1 功能
+- 游戏页（PLAYING 屏幕）中 **体力状态区 + 网格 + 碎片区** 作为一个整体可纵向滚动
+- 页面顶部 Header（返回、关卡标题、分数、静音按钮）固定不滚动
+- 页面底部操作栏（提示、洗牌、重置）固定不滚动
+- 内容超出可视区域时右侧显示滚动条
+
+### 10.2 滚动区域
+```
+┌─────────────────────┐
+│  Header (固定)      │  ← hud.headerH
+├─────────────────────┤
+│  体力 / 进度 (滚动) │  ← 从此处开始可滚动
+│  网格区域   (滚动)  │
+│  碎片区域   (滚动)  │
+├─────────────────────┤
+│  提示/洗牌/重置(固定)│ ← hud.yBottom - 8
+└─────────────────────┘
+```
+
+### 10.3 实现细节
+- `gameScrollY`：Main 实例属性，控制整体垂直滚动偏移
+- `_gameUpdateScrollMetrics()`：计算 `_gameContentH`（碎片区底部 Y）和 `_gameMaxScrollY`（内容高度 - 可视区域高度）
+- `_renderGame(ctx)` 渲染流程：
+  1. `hud.getLayout()` 计算布局参数
+  2. 检测关卡切换（`_lastLevelId !== db.levelId`）→ 重置 `gameScrollY = 0`
+  3. 调用 `_gameUpdateScrollMetrics()` 更新滚动指标
+  4. `hud.drawHeader(ctx)` — 固定头部（不随 scroll 偏移）
+  5. 裁剪区域 `[headerH, yBottom-8]` → `ctx.translate(0, -gameScrollY)` → 绘制 `hud.drawStatus(ctx)` + `grid.draw(ctx)` + `fragmentBar.draw(ctx)` → `ctx.restore()`
+  6. `hud.drawBottom(ctx)` — 固定底部操作栏
+  7. 必要时绘制滚动条
+- 触摸事件统一管理：
+  - `_isInGameScrollArea(x, y)`：判断触摸点是否在可滚动区域内
+  - `_gameOnTouchStart/Move/End`：处理拖动滚动 + 惯性，非拖动时路由点击到 grid/fragmentBar（Y 坐标需加回 scrollY）
+  - 引导激活期间阻止滚动区域触摸
+- 惯性滚动：衰减系数 `0.92`，递增 ID 防止动画冲突，速度阈值 `< 0.05` 或到达边界时停止
+- 滚动条渲染：thumb 高度 = trackH × (viewportHeight / contentHeight)，最小 32px
+
+### 10.4 FragmentBar 简化
+**文件：** `js/game/FragmentBar.js`
+
+FragmentBar 移除了所有独立滚动逻辑（`scrollY`、`maxScrollY`、`_dragging`、`_inertiaId` 等），恢复为纯渲染+点击检测组件。新增 `getBottomY()` 方法供 Main 计算总内容高度。
+
+---
+
+## 11. HUD 组件拆分重构
+
+**文件：** `js/ui/HUD.js`
+
+### 11.1 拆分策略
+将原单一 `draw(ctx)` 方法拆分为三个独立绘制方法：
+
+| 方法 | 绘制内容 | 定位 | 滚动 |
+|------|---------|------|------|
+| `drawHeader(ctx)` | 返回按钮、关卡标题、总分、静音按钮 | 屏幕顶部，h=50px | 固定 |
+| `drawStatus(ctx)` | 体力心形、剩余空格、进度条 | headerH ~ headerH+statusH | 随内容滚动 |
+| `drawBottom(ctx)` | 提示/洗牌/重置按钮 + 背景栏 | 屏幕底部 | 固定 |
+
+### 11.2 布局优化
+- `statusH`：56 → 72px（两行文字 + 进度条 + padding）
+- 进度条宽度：动态计算 `Math.min(SCREEN_WIDTH - padX * 2, 240)` 替代固定 `100px`
+- 按钮栏背景：白色半透明 `rgba(255,255,255,0.95)` + 顶部分割线
+- `_drawRoundedBar()` 使用 `arcTo` 绘制圆角条，替换 `quadraticCurve`
+- 新增 `hitTestHeader()` / `hitTestBottom()` 方法支持分区域碰撞检测
+- `headerButtons` / `bottomButtons` 数组分组管理
+
+### 11.3 Grid 动态 offsetY 适配
+**文件：** `js/game/Grid.js`
+
+`getLayout()` 中的 `offsetY` 改为动态计算，适应 HUD 尺寸变化：
+```javascript
+const headerH = hud ? hud.headerH : 50;
+const statusH = hud ? hud.statusH : 72;
+this.offsetY = headerH + statusH + marginTop + panelPad;
+```
+
+---
+
+## 12. 新手引导滚动适配
+
+**文件：** `js/game/Tutorial.js`
+
+### 12.1 高亮区域偏移修正
+`_getHighlightRect()` 中动态计算高亮区域时，受滚动影响的元素（grid、fragments、stamina）需减去当前游戏滚动偏移 `main.gameScrollY`，不受滚动影响的元素（buttons 固定底部、demo 屏幕中部）保持原坐标。
+
+### 12.2 文本位置优化
+引导文字框根据高亮区域位置动态调整：高亮在屏幕上三分之一时文字显示在下方，高亮在屏幕下三分之一时文字显示在上方，避免文字框溢出屏幕边界。
+
+### 12.3 步骤 4 遮罩修正
+Step 4（辅助按钮高亮）的 `clearRect` x 起点从 `hud.hintBtn.x - 8` 修正为 `0`，确保遮罩覆盖整个底部按钮区域。
+
+---
+
+## 13. 更新后的文件改动清单
+
+| 操作 | 文件 | 说明 |
+|------|------|------|
+| 新增 | `js/ads/AdManager.js` | 广告管理器 |
+| 新增 | `js/audio/SoundManager.js` | 音效管理器 |
+| 新增 | `js/game/DailySign.js` | 签到面板 |
+| 新增 | `js/game/Tutorial.js` | 新手引导 |
+| 新增 | `audio/` 目录 | 音效文件（用户自行下载放入） |
+| 修改 | `js/databus.js` | 新增 hintCards, todaySigned, signStreak, soundMuted, tutorialDone |
+| 修改 | `js/main.js` | 集成 4 个新模块、统一游戏滚动（体力+网格+碎片整体滚动）、触摸路由重构、惯性物理、GameScroll 状态管理 |
+| 修改 | `js/game/MenuScreen.js` | 看广告按钮、静音按钮、每日签到入口、**触摸拖动滚动 + 惯性 + 滚动条**、翻页重置滚动位置 |
+| 修改 | `js/ui/HUD.js` | 体力不足广告入口、提示不足广告入口、静音按钮、**拆分为 drawHeader/drawStatus/drawBottom**、状态区域扩大至 72px、动态进度条宽度、分组按钮管理 |
+| 修改 | `js/game/Grid.js` | 通关后"看广告翻倍积分"按钮、放置成功/失败音效、**动态 offsetY 适配 HUD 尺寸** |
+| 修改 | `js/game/FragmentBar.js` | **移除独立滚动逻辑**（交由 Main 统一管理）、新增 `getBottomY()` 供 Main 计算滚动高度 |
+| 修改 | `js/game/Tutorial.js` | **高亮区域滚动偏移适配**、文本位置动态调整、步骤 4 遮罩修正 |
+| 修改 | `js/ui/Button.js` | 点击时触发音效 |
+| 修改 | `prd.md`, `tech.md` | 更新文档 |
+| 修改 | `server/routes/index.js` | 新增 `/user/double-score` 路由 |
+| 修改 | `server/controllers/authController.js` | 新增 `doubleScore` 方法，`dailySign` 返回 streak |
+| 修改 | `server/models/User.js` | 新增 `last_sign_date`, `sign_streak` 字段 |
+| 修改 | `server/services/userService.js` | 更新 `dailySign` 支持阶梯奖励，`getMe` 返回签到状态 |
+
+---
+
+## 14. 风险与注意事项
+
+1. **广告单元 ID**：需要在微信公众平台注册小游戏后才能获取正式 ID，开发阶段使用测试 ID
+2. **音效文件**：需要用户手动下载放入 `audio/` 目录，未放入时音效播放静默失败
+3. **引导与游戏逻辑的交互**：引导期间需拦截所有触摸事件，引导的"操作示范"步骤需要实时监听玩家操作
+4. **Canvas 层级**：引导遮罩需在所有元素之上绘制，签到面板仅在菜单页显示
+5. **Banner 广告**：菜单页显示，进入游戏或编辑器时隐藏
+6. **滚动性能**：统一游戏滚动使用 Canvas clip + translate，需确保裁剪区域计算正确；惯性动画使用 requestAnimationFrame，在低端设备上需注意帧率
+7. **触摸冲突**：菜单页滚动与游戏页滚动状态完全隔离（不同 screen state），引导激活期间禁止滚动区域触摸，防止误操作
+8. **关卡切换重置**：进入新关卡时必须重置 `gameScrollY = 0`，避免滚动位置残留导致内容错位
 
 | 操作 | 文件 | 说明 |
 |------|------|------|

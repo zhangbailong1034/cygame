@@ -1495,6 +1495,232 @@ git commit -m "fix: expose unlockAudio, fix tutorial stamina rect, add audio pla
 
 ---
 
+### Task 17: Add MenuScreen scroll support
+
+**Files:**
+- Modify: `js/game/MenuScreen.js`
+
+- [ ] **Step 1: Add scroll state and touch handlers**
+
+Add scroll state properties to constructor:
+```javascript
+this.scrollY = 0;
+this.maxScrollY = 0;
+this.contentHeight = 0;
+// drag state
+this._dragStartY = 0;
+this._dragStartScrollY = 0;
+this._wasDrag = false;
+this._velocity = 0;
+this._lastTouchY = 0;
+this._lastTouchTime = 0;
+this._inertiaId = 0;
+```
+
+- [ ] **Step 2: Calculate scroll metrics in buildButtons()**
+
+After positioning all buttons, compute contentHeight and maxScrollY:
+```javascript
+this.contentHeight = lowestButton.bottom + 20;
+const viewportH = SCREEN_HEIGHT - topOffset; // topOffset for header area
+this.maxScrollY = Math.max(0, this.contentHeight - viewportH);
+```
+
+- [ ] **Step 3: Implement touch handlers**
+
+Rename existing `onTouch` to `_processTap`. Add `onTouchStart`, `onTouchMove`, `onTouchEnd` with 8px drag threshold and inertia physics.
+
+- [ ] **Step 4: Update draw() with clip + translate**
+
+Wrap scrollable content in `ctx.save()` → clip → `translate(0, -scrollY)` → draw → `ctx.restore()`. Draw fixed elements (mute button, scrollbar) outside the clip.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add js/game/MenuScreen.js
+git commit -m "feat: add touch-drag scroll with inertia and scrollbar to MenuScreen"
+```
+
+---
+
+### Task 18: Refactor HUD into header/status/bottom sections
+
+**Files:**
+- Modify: `js/ui/HUD.js`
+
+- [ ] **Step 1: Split draw() into drawHeader(), drawStatus(), drawBottom()**
+
+- `drawHeader(ctx)`: back button, level title, total score, mute button. Fixed at screen top, h=50px.
+- `drawStatus(ctx)`: stamina hearts, remaining empty cells, progress bar. Scrollable, h=72px.
+- `drawBottom(ctx)`: hint/shuffle/reset buttons with white background bar. Fixed at screen bottom.
+
+- [ ] **Step 2: Optimize status area layout**
+
+Increase statusH from 56 to 72px. Two text lines + progress bar with proper padding. Progress bar width dynamic: `Math.min(SCREEN_WIDTH - padX * 2, 240)`.
+
+- [ ] **Step 3: Add hitTestHeader() and hitTestBottom() methods**
+
+Split allButtons into headerButtons and bottomButtons arrays for independent hit testing.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add js/ui/HUD.js
+git commit -m "refactor: split HUD into fixed header, scrollable status, fixed bottom"
+```
+
+---
+
+### Task 19: Make Grid offsetY dynamic
+
+**Files:**
+- Modify: `js/game/Grid.js`
+
+- [ ] **Step 1: Compute offsetY from HUD dimensions**
+
+In `getLayout()`, calculate offsetY using HUD headerH and statusH:
+```javascript
+const hud = GameGlobal.main && GameGlobal.main.hud;
+const headerH = hud ? hud.headerH : 50;
+const statusH = hud ? hud.statusH : 72;
+this.offsetY = headerH + statusH + marginTop + panelPad;
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add js/game/Grid.js
+git commit -m "refactor: dynamic grid offsetY from HUD dimensions"
+```
+
+---
+
+### Task 20: Simplify FragmentBar — remove scroll logic
+
+**Files:**
+- Modify: `js/game/FragmentBar.js`
+
+- [ ] **Step 1: Remove all scroll state and touch handlers**
+
+Remove: scrollY, maxScrollY, _dragging, _wasDrag, _velocity, _inertiaId, onTouchStart/Move/End, _processTap, hitTestViewport, _drawScrollbar, ctx.clip/translate in draw().
+
+- [ ] **Step 2: Add getBottomY() helper**
+
+```javascript
+getBottomY() {
+  this.getLayout();
+  return this.startY + this.totalHeight;
+}
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add js/game/FragmentBar.js
+git commit -m "refactor: remove FragmentBar scroll, now managed by Main unified scroll"
+```
+
+---
+
+### Task 21: Implement unified game scroll in Main.js
+
+**Files:**
+- Modify: `js/main.js`
+
+- [ ] **Step 1: Add game scroll state to Main constructor**
+
+```javascript
+this.gameScrollY = 0;
+this._gameMaxScrollY = 0;
+this._gameContentH = 0;
+this._gameDragStartY = 0;
+this._gameDragStartScrollY = 0;
+this._gameWasDrag = false;
+this._gameTouchActive = false;
+this._gameVelocity = 0;
+this._gameLastTouchY = 0;
+this._gameLastTouchTime = 0;
+this._gameInertiaId = 0;
+```
+
+- [ ] **Step 2: Add scroll calculation and area detection helpers**
+
+`_gameScrollAreaTop()`, `_gameScrollAreaBottom()`, `_isInGameScrollArea(x, y)`, `_gameUpdateScrollMetrics()`.
+
+- [ ] **Step 3: Add touch handlers for game scroll**
+
+`_gameOnTouchStart/Move/End` with 8px drag threshold, tap routing with scroll-adjusted y, inertia animation with decay `0.92`.
+
+- [ ] **Step 4: Implement _renderGame() with clip + translate**
+
+Fixed header → clip scroll area → `translate(0, -gameScrollY)` → status+grid+fragments → restore → fixed bottom bar → scrollbar.
+
+- [ ] **Step 5: Add level change detection**
+
+Track `_lastLevelId` and reset `gameScrollY = 0` on level change.
+
+- [ ] **Step 6: Update touch routing in initTouchHandler and _handleTouch**
+
+Route PLAYING touches properly through scroll area or fixed areas. Guard against tutorial interception.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add js/main.js
+git commit -m "feat: unified game scroll — status+grid+fragments scroll together"
+```
+
+---
+
+### Task 22: Adapt Tutorial highlight rects for game scroll
+
+**Files:**
+- Modify: `js/game/Tutorial.js`
+
+- [ ] **Step 1: Subtract gameScrollY from scroll-affected highlight rects**
+
+In `_getHighlightRect()`, subtract `main.gameScrollY` from y for grid, fragments, and stamina highlights. Keep buttons and demo highlights unchanged (fixed position).
+
+- [ ] **Step 2: Add text overflow prevention**
+
+Position text above highlight if below would overflow: `belowY + textH > SCREEN_HEIGHT - 20 ? rect.y - textH - 20 : belowY`.
+
+- [ ] **Step 3: Fix step 4 mask width**
+
+Change `x: hud.hintBtn.x - 8` to `x: 0` to cover full bottom button bar width.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add js/game/Tutorial.js
+git commit -m "fix: adapt Tutorial highlights for unified game scroll, fix step 4 mask"
+```
+
+---
+
+### Task 23: Update spec and plan docs with scroll/UI details
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-05-10-ads-monetization-design.md`
+- Modify: `docs/superpowers/plans/2026-05-10-ads-monetization-plan.md`
+
+- [ ] **Step 1: Update spec doc with scroll/UI sections**
+
+Add sections: Menu scroll, Unified game scroll, HUD refactoring, Grid dynamic offsetY, FragmentBar simplification, Tutorial scroll adaptation. Update file changes list and risks.
+
+- [ ] **Step 2: Update plan doc with scroll/UI tasks**
+
+Add Tasks 17-23 covering scroll implementation. Update implementation order.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/superpowers/specs/2026-05-10-ads-monetization-design.md docs/superpowers/plans/2026-05-10-ads-monetization-plan.md
+git commit -m "docs: add scroll/UI optimization tasks 17-23 to plan and spec"
+```
+
+---
+
 ## Implementation Order
 
 Tasks must be executed in this order due to dependencies:
@@ -1515,6 +1741,15 @@ Tasks must be executed in this order due to dependencies:
 14. Task 14 → Main.js (client, depends on ALL above)
 15. Task 15 → docs (depends on all)
 16. Task 16 → cleanup
+17. Task 17 → MenuScreen scroll (client, depends on Task 12)
+18. Task 18 → HUD refactoring (client, depends on Task 11)
+19. Task 19 → Grid dynamic offsetY (client, depends on Task 18)
+20. Task 20 → FragmentBar simplification (client, depends on Task 18)
+21. Task 21 → Main unified game scroll (client, depends on Tasks 18,19,20)
+22. Task 22 → Tutorial scroll adaptation (client, depends on Task 21)
+23. Task 23 → docs update (depends on all scroll tasks)
 
 Tasks 5, 6, 7, 9 can run in parallel (no dependencies between them).
 Tasks 10 can be skipped (no Button.js changes needed).
+Tasks 17, 18 can run in parallel after Task 12/Task 11 respectively.
+Tasks 19, 20 can run in parallel (both depend on Task 18).
