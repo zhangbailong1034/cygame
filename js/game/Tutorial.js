@@ -100,7 +100,16 @@ export class Tutorial {
 
     const textW = 260, textH = 70;
     const textX = (SCREEN_WIDTH - textW) / 2;
-    const textY = rect ? rect.y + rect.h + 20 : SCREEN_HEIGHT / 2;
+    // Position text below the highlight, or above if it would overflow
+    let textY;
+    if (rect) {
+      const belowY = rect.y + rect.h + 20;
+      textY = belowY + textH > SCREEN_HEIGHT - 20
+        ? rect.y - textH - 20
+        : belowY;
+    } else {
+      textY = SCREEN_HEIGHT / 2;
+    }
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     this._roundRect(ctx, textX, textY, textW, textH, 10);
     ctx.fill();
@@ -137,6 +146,7 @@ export class Tutorial {
   _getHighlightRect(highlight) {
     const main = GameGlobal.main;
     if (!main) return null;
+    const sy = main.gameScrollY || 0;
 
     switch (highlight) {
       case 'grid': {
@@ -145,7 +155,7 @@ export class Tutorial {
         const panelPad = 16;
         return {
           x: grid.offsetX - panelPad,
-          y: grid.offsetY - panelPad,
+          y: grid.offsetY - panelPad - sy,
           w: GameGlobal.databus.cols * grid.cellSize + (GameGlobal.databus.cols - 1) * grid.gap + panelPad * 2,
           h: GameGlobal.databus.rows * grid.cellSize + (GameGlobal.databus.rows - 1) * grid.gap + panelPad * 2,
         };
@@ -155,7 +165,7 @@ export class Tutorial {
         bar.getLayout();
         return {
           x: 0,
-          y: bar.startY - 8,
+          y: bar.startY - 8 - sy,
           w: SCREEN_WIDTH,
           h: bar.totalHeight + 16,
         };
@@ -166,7 +176,7 @@ export class Tutorial {
         const hud = main.hud;
         hud.getLayout();
         return {
-          x: hud.hintBtn.x - 8,
+          x: 0,
           y: hud.yBottom - 8,
           w: SCREEN_WIDTH,
           h: SCREEN_HEIGHT - hud.yBottom + 8,
@@ -174,7 +184,7 @@ export class Tutorial {
       }
       case 'stamina': {
         const hud = main.hud;
-        return { x: 4, y: hud.headerH + 2, w: SCREEN_WIDTH - 8, h: hud.statusH };
+        return { x: 4, y: hud.headerH + 2 - sy, w: SCREEN_WIDTH - 8, h: hud.statusH };
       }
       default:
         return null;

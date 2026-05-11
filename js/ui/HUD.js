@@ -9,7 +9,9 @@ export class HUD {
     this.btnW = 72;
     this.gap = 10;
     this.headerH = 50;
-    this.statusH = 56;
+    this.statusH = 72;
+    this.progress = 0;
+    this.emptyCells = 0;
 
     this.backBtn = new Button(0, 0, 50, 28, '← 返回', 'rgba(255,255,255,0.22)');
     this.backBtn.onClick = () => this.handleBack();
@@ -28,7 +30,9 @@ export class HUD {
       this.muteBtn.label = GameGlobal.main.soundManager.muted ? '🔇' : '🔊';
     };
 
-    this.allButtons = [this.hintBtn, this.shuffleBtn, this.resetBtn, this.backBtn, this.muteBtn];
+    this.headerButtons = [this.backBtn, this.muteBtn];
+    this.bottomButtons = [this.hintBtn, this.shuffleBtn, this.resetBtn];
+    this.allButtons = [...this.headerButtons, ...this.bottomButtons];
   }
 
   getLayout() {
@@ -50,6 +54,11 @@ export class HUD {
     this.muteBtn.y = (this.headerH - 28) / 2;
 
     this.yBottom = btnY;
+
+    const db = GameGlobal.databus;
+    this.emptyCells = this._countEmpty(db);
+    const total = db.rows * db.cols;
+    this.progress = total > 0 ? Math.round((total - this.emptyCells) / total * 100) : 0;
   }
 
   _countEmpty(db) {
@@ -63,12 +72,25 @@ export class HUD {
     return total - filled;
   }
 
-  draw(ctx) {
-    this.getLayout();
-    const db = GameGlobal.databus;
-    const emptyCells = this._countEmpty(db);
+  _drawRoundedBar(ctx, x, y, w, h, color) {
+    const r = h / 2;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+    ctx.fill();
+  }
 
-    // === Header bar ===
+  // --- Fixed header: drawn at screen top, never scrolls ---
+
+  drawHeader(ctx) {
+    const db = GameGlobal.databus;
+
     const headerGrad = ctx.createLinearGradient(0, 0, 0, this.headerH);
     headerGrad.addColorStop(0, '#4a6fa5');
     headerGrad.addColorStop(1, '#3b5998');
@@ -78,102 +100,112 @@ export class HUD {
     ctx.fillStyle = 'rgba(0,0,0,0.12)';
     ctx.fillRect(0, this.headerH, SCREEN_WIDTH, 2);
 
-    // Back button
     this.backBtn.draw(ctx);
 
-    // Level title (with preview badge if applicable)
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 19px sans-serif';
     ctx.textAlign = 'center';
     const titleText = '第 ' + db.levelId + ' 关' + (db.previewMode ? '  [预览]' : '');
     ctx.fillText(titleText, SCREEN_WIDTH / 2, this.headerH / 2 + 7);
 
-    // Score in header (right)
     ctx.fillStyle = '#ffe0a0';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText('⭐ ' + db.totalScore, SCREEN_WIDTH - 14, this.headerH / 2 + 6);
+  }
 
-    // === Status area (three lines, between header and grid) ===
-    const statusY = this.headerH;
-    const total = db.rows * db.cols;
-    const progress = total > 0 ? Math.round((total - emptyCells) / total * 100) : 0;
+  // --- Status area: scrolls with grid and fragments ---
+
+  drawStatus(ctx) {
+    const db = GameGlobal.databus;
     const hearts = '❤️'.repeat(Math.max(0, db.stamina));
 
     // Background
     ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.fillRect(0, statusY, SCREEN_WIDTH, this.statusH);
+    ctx.fillRect(0, this.headerH, SCREEN_WIDTH, this.statusH);
     ctx.fillStyle = 'rgba(0,0,0,0.06)';
-    ctx.fillRect(0, statusY + this.statusH, SCREEN_WIDTH, 1);
+    ctx.fillRect(0, this.headerH + this.statusH, SCREEN_WIDTH, 1);
 
-    const lineH = 18;
-    const leftPad = 16;
+    const padX = 14;
+    const padTop = 8;
+    const lineH = 20;
+    const textY1 = this.headerH + padTop + 14;
+    const textY2 = textY1 + lineH;
 
     // Line 1: Stamina
     ctx.font = 'bold 13px sans-serif';
     ctx.fillStyle = '#e06060';
     ctx.textAlign = 'left';
     const staminaText = db.stamina > 0 ? hearts + ' ×' + db.stamina : '💔 体力耗尽';
-    ctx.fillText(staminaText, leftPad, statusY + 13);
+    ctx.fillText(staminaText, padX, textY1);
 
-    // Line 2: Remaining
-    ctx.fillStyle = emptyCells > 0 ? '#4a90d9' : '#4caf50';
-    ctx.fillText('🀫 剩余空格：' + emptyCells + ' 格', leftPad, statusY + 13 + lineH);
+    // Line 2: Remaining empty cells
+    ctx.fillStyle = this.emptyCells > 0 ? '#4a90d9' : '#4caf50';
+    ctx.fillText('🔫 剩余空格：' + this.emptyCells + ' 格', padX, textY2);
 
-    // Line 3: Progress bar
-    const progBarW = 100;
-    const progBarX = leftPad;
-    const progBarY = statusY + 13 + lineH * 2 - 4;
+    // Progress bar
     const progBarH = 8;
-    // Progress bar background
-    ctx.fillStyle = '#e8e8e8';
-    ctx.beginPath();
-    ctx.moveTo(progBarX + 4, progBarY);
-    ctx.lineTo(progBarX + progBarW - 4, progBarY);
-    ctx.quadraticCurveTo(progBarX + progBarW, progBarY, progBarX + progBarW, progBarY + progBarH / 2);
-    ctx.quadraticCurveTo(progBarX + progBarW, progBarY + progBarH, progBarX + progBarW - 4, progBarY + progBarH);
-    ctx.lineTo(progBarX + 4, progBarY + progBarH);
-    ctx.quadraticCurveTo(progBarX, progBarY + progBarH, progBarX, progBarY + progBarH / 2);
-    ctx.quadraticCurveTo(progBarX, progBarY, progBarX + 4, progBarY);
-    ctx.closePath();
-    ctx.fill();
-    // Progress bar fill
-    const fillW = Math.max(0, (progBarW - 0) * progress / 100);
-    if (fillW > 0) {
-      const fillColor = progress === 100 ? '#4caf50' : '#e8a840';
-      ctx.fillStyle = fillColor;
-      ctx.beginPath();
-      ctx.moveTo(progBarX + 4, progBarY);
-      ctx.lineTo(progBarX + Math.min(fillW, progBarW) - 4, progBarY);
-      ctx.quadraticCurveTo(progBarX + Math.min(fillW, progBarW), progBarY, progBarX + Math.min(fillW, progBarW), progBarY + progBarH / 2);
-      ctx.quadraticCurveTo(progBarX + Math.min(fillW, progBarW), progBarY + progBarH, progBarX + Math.min(fillW, progBarW) - 4, progBarY + progBarH);
-      ctx.lineTo(progBarX + 4, progBarY + progBarH);
-      ctx.quadraticCurveTo(progBarX, progBarY + progBarH, progBarX, progBarY + progBarH / 2);
-      ctx.quadraticCurveTo(progBarX, progBarY, progBarX + 4, progBarY);
-      ctx.closePath();
-      ctx.fill();
-    }
-    // Progress percentage text
-    ctx.textAlign = 'right';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillStyle = '#888';
-    ctx.fillText('完成 ' + progress + '%', SCREEN_WIDTH - 16, statusY + 13 + lineH * 2 + 2);
+    const progBarPadY = 8;
+    const progBarY = textY2 + progBarPadY + 4;
+    const progBarX = padX;
+    const progBarW = Math.min(SCREEN_WIDTH - padX * 2, 240);
 
-    // === Bottom bar background ===
+    this._drawRoundedBar(ctx, progBarX, progBarY, progBarW, progBarH, '#e8e8e8');
+
+    const fillW = Math.max(progBarH, progBarW * this.progress / 100);
+    if (this.progress > 0) {
+      const fillColor = this.progress === 100 ? '#4caf50' : '#e8a840';
+      this._drawRoundedBar(ctx, progBarX, progBarY, fillW, progBarH, fillColor);
+    }
+
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.fillText(this.progress + '%', progBarX + progBarW + 6, progBarY + progBarH / 2 + 4);
+  }
+
+  // --- Bottom bar: fixed at screen bottom, never scrolls ---
+
+  drawBottom(ctx) {
     const barTop = this.yBottom - 8;
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
     ctx.fillRect(0, barTop, SCREEN_WIDTH, SCREEN_HEIGHT - barTop);
     ctx.fillStyle = 'rgba(0,0,0,0.06)';
     ctx.fillRect(0, barTop, SCREEN_WIDTH, 1);
 
-    for (const btn of [this.hintBtn, this.shuffleBtn, this.resetBtn]) {
+    for (const btn of this.bottomButtons) {
       btn.draw(ctx);
     }
   }
 
+  // Convenience: draw everything (used by original flow if needed)
+  draw(ctx) {
+    this.drawHeader(ctx);
+    this.drawStatus(ctx);
+    this.drawBottom(ctx);
+  }
+
+  // --- Hit testing ---
+
   hitTest(px, py) {
     this.getLayout();
     for (const b of this.allButtons) {
+      if (b.hitTest(px, py)) return true;
+    }
+    return false;
+  }
+
+  hitTestBottom(px, py) {
+    this.getLayout();
+    for (const b of this.bottomButtons) {
+      if (b.hitTest(px, py)) return true;
+    }
+    return false;
+  }
+
+  hitTestHeader(px, py) {
+    this.getLayout();
+    for (const b of this.headerButtons) {
       if (b.hitTest(px, py)) return true;
     }
     return false;

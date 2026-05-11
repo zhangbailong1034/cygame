@@ -9,5 +9,8 @@
       "Bash(node -e ' *)",
       "Bash(git commit *)"
     ]
+  },
+  "custom_instructions":{
+    "language": "Always respond in Chinese.You must not output english explanations.or mixed language responses."
   }
 }

@@ -13,7 +13,11 @@ export class Grid {
 
   getLayout() {
     const db = GameGlobal.databus;
+    const hud = GameGlobal.main && GameGlobal.main.hud;
+    const headerH = hud ? hud.headerH : 50;
+    const statusH = hud ? hud.statusH : 72;
     const panelPad = 16;
+    const marginTop = 10;
     const maxGridW = SCREEN_WIDTH - panelPad * 2;
     // Shrink cell size if grid is too wide
     const idealCellW = (maxGridW - (db.cols - 1) * this.gap) / db.cols;
@@ -21,7 +25,8 @@ export class Grid {
     const totalW = db.cols * this.cellSize + (db.cols - 1) * this.gap;
     const totalH = db.rows * this.cellSize + (db.rows - 1) * this.gap;
     this.offsetX = (SCREEN_WIDTH - totalW) / 2;
-    this.offsetY = 138;
+    // Grid sits below header + status area + margin + panel padding
+    this.offsetY = headerH + statusH + marginTop + panelPad;
     return { totalW, totalH, offsetX: this.offsetX, offsetY: this.offsetY };
   }
 

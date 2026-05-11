@@ -10,6 +10,7 @@ export class FragmentBar {
     this.rowGap = 8;
     this.startY = 0;
     this._items = [];
+    this.totalHeight = 0;
   }
 
   getLayout() {
@@ -19,14 +20,15 @@ export class FragmentBar {
       ...db.distractors.map(d => ({ text: d.text, length: d.length, positions: null, isDistractor: true })),
     ];
 
-    // Match Grid's dynamic cell size calculation
     const panelPad = 16;
     const maxGridW = SCREEN_WIDTH - panelPad * 2;
-    const gap = 5;
-    const cellSize = Math.min(54, Math.floor((maxGridW - (db.cols - 1) * gap) / db.cols));
-    const gridH = db.rows * cellSize + (db.rows - 1) * gap;
-    const gridBottom = 138 + 16 + gridH;
-    this.startY = Math.max(gridBottom + 14, SCREEN_WIDTH * 0.88);
+    const gGap = 5;
+    const grid = GameGlobal.main && GameGlobal.main.grid;
+    const cellSize = grid ? grid.cellSize : Math.min(54, Math.floor((maxGridW - (db.cols - 1) * gGap) / db.cols));
+    const gridOffsetY = grid ? grid.offsetY : 148;
+    const gridH = (db.rows || 4) * cellSize + ((db.rows || 4) - 1) * gGap;
+    const gridBottom = gridOffsetY + panelPad + gridH;
+    this.startY = gridBottom + 14;
     const maxW = SCREEN_WIDTH - this.paddingX * 2;
 
     this._items = [];
@@ -49,8 +51,14 @@ export class FragmentBar {
       cx += w + this.gap;
     }
 
-    this.totalHeight = (row + 1) * (this.itemH + this.rowGap);
+    this.totalHeight = (row + 1) * (this.itemH + this.rowGap) + 16;
     return this._items;
+  }
+
+  /** Bottom Y of the last fragment row — used by Main to compute total scroll height */
+  getBottomY() {
+    this.getLayout();
+    return this.startY + this.totalHeight;
   }
 
   hitTest(px, py) {
@@ -101,23 +109,20 @@ export class FragmentBar {
     const items = this.getLayout();
     const db = GameGlobal.databus;
 
-    // Fragment area background
-    const barTop = this.startY - 8;
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillRect(0, barTop, SCREEN_WIDTH, this.totalHeight + 16);
+    // Background behind fragments
+    ctx.fillStyle = 'rgba(255,255,255,0.70)';
+    ctx.fillRect(0, this.startY - 8, SCREEN_WIDTH, this.totalHeight + 16);
     ctx.fillStyle = 'rgba(0,0,0,0.04)';
-    ctx.fillRect(0, barTop, SCREEN_WIDTH, 1);
+    ctx.fillRect(0, this.startY - 8, SCREEN_WIDTH, 1);
 
     for (const item of items) {
       const { x, y, w, h, text, isDistractor } = item;
       const isSelected = db.selectedFragment && db.selectedFragment.uid === item.uid;
 
-      // Card shadow
       ctx.fillStyle = isSelected ? 'rgba(255,152,0,0.25)' : 'rgba(0,0,0,0.06)';
       this._roundRect(ctx, x + 1, y + 2, w, h, 8);
       ctx.fill();
 
-      // Card background
       if (isDistractor) {
         const grad = ctx.createLinearGradient(x, y, x, y + h);
         grad.addColorStop(0, '#f5efe0');
@@ -137,13 +142,11 @@ export class FragmentBar {
       this._roundRect(ctx, x, y, w, h, 8);
       ctx.fill();
 
-      // Card border
       ctx.strokeStyle = isSelected ? '#ff9800' : (isDistractor ? '#d8c8a8' : '#c0c8c0');
       ctx.lineWidth = isSelected ? 2 : 1;
       this._roundRect(ctx, x, y, w, h, 8);
       ctx.stroke();
 
-      // Text
       ctx.fillStyle = isDistractor ? '#8a7a6a' : '#333';
       ctx.font = 'bold 17px sans-serif';
       ctx.textAlign = 'center';

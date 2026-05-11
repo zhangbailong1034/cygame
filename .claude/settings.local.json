@@ -9,7 +9,9 @@
       "Bash(npm info *)",
       "Bash(timeout 5 npx -y github-mcp-server)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(node -e \"const levels = require\\('./server/seeds/seedLevels.js'.replace\\('seedLevels.js',''\\)\\); \")",
+      "Bash(taskkill //F //IM node.exe)"
     ]
   }
 }
